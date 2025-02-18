@@ -1,9 +1,9 @@
 import pandas as pd
 from tqdm import tqdm
-from strategies.Strategy import Strategy
 from values_definition import Position
+from strategies.Strategy import Strategy
 
-def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:bool, times_below_before_breakeven:int) -> pd.DataFrame:
+def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:bool, times_below_breakeven_treshold:int) -> pd.DataFrame:
 
     CAPITAL = 50_000.0 # constant
     followingSl = slInTicks
@@ -17,10 +17,10 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
     entryPrice = 0.0
     tradesData = []
     maxBar = len(strategy.df_M5) - 1 
-    allowed_trading_hours_start = 8 if usSession == False else 16
-    allowed_trading_hours_end = 21
+    allowed_trading_hours_start = 7 if usSession == False else 16
+    allowed_trading_hours_end = 20
     times_below_breakeven = 0
-    isFirstTradeCandle = False
+    # isFirstTradeCandle = False
 
     with tqdm(total=maxBar) as pbar:
         for i in strategy.df_M5.index[1:]: 
@@ -28,23 +28,23 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
             currentPrice = strategy.df_M5.loc[i]["close"]
             currentDate = strategy.df_M5.loc[i]["datetime"]
 
-            if position is Position.NONE:
+            if position == Position.NONE:
                 if (allowed_trading_hours_start <= currentDate.hour and currentDate.hour < allowed_trading_hours_end):
                     position = strategy.checkIfCanEnterPosition(i, tpInTicks)
                     entryDate = currentDate
                     entryPrice = currentPrice
                     times_below_breakeven = 0
-                    isFirstTradeCandle = True
+                    # isFirstTradeCandle = True
                     followingSl = slInTicks
 
             else:
-                prevPrice = strategy.df_M5.loc[i-1]["close"]
-                if position is Position.LONG:
+                # prevPrice = strategy.df_M5.loc[i-1]["close"]
+                if position == Position.LONG:
                     sl = entryPrice - followingSl*tickSize
                     tp = entryPrice + tpInTicks*tickSize
 
-                    if (not isFirstTradeCandle) and (prevPrice <= entryPrice) and (entryPrice < currentPrice):
-                        times_below_breakeven+=1
+                    # if (not isFirstTradeCandle) and (prevPrice <= entryPrice) and (entryPrice < currentPrice):
+                    #     times_below_breakeven+=1
                         
                     if currentPrice <= sl: # LOSE
                         profit = -followingSl*tickValue*positionSize
@@ -72,10 +72,10 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
                         })
                         position = Position.NONE
 
-                    elif times_below_before_breakeven>0 and times_below_breakeven>=times_below_before_breakeven: # and currentPrice >= entryPrice + tpInTicks*tickSize/2: # tp/2
-                        followingSl = 0 # => breakeven
+                    # elif times_below_breakeven_treshold>0 and times_below_breakeven>=times_below_breakeven_treshold: # and currentPrice >= entryPrice + tpInTicks*tickSize/2: # tp/2
+                    #     followingSl = 0 # => breakeven
                     
-                    elif currentDate.hour >= 22:
+                    elif strategy.checkIfCanStopLongPosition(i) or currentDate.hour >= 22:
                         profit = (currentPrice-entryPrice)*tickValue*positionSize
                         tradesData.append({
                             "entry_date": entryDate, 
@@ -88,12 +88,12 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
                         })
                         position = Position.NONE
 
-                elif position is Position.SHORT:
+                elif position == Position.SHORT:
                     sl = entryPrice + followingSl*tickSize
                     tp = entryPrice - tpInTicks*tickSize
 
-                    if (not isFirstTradeCandle) and (prevPrice >= entryPrice) and (entryPrice > currentPrice):
-                        times_below_breakeven+=1
+                    # if (not isFirstTradeCandle) and (prevPrice >= entryPrice) and (entryPrice > currentPrice):
+                    #     times_below_breakeven+=1
 
                     if currentPrice >= sl: # LOSE
                         profit = -followingSl*tickValue*positionSize
@@ -121,10 +121,10 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
                         })
                         position = Position.NONE
 
-                    elif times_below_before_breakeven>0 and times_below_breakeven>=times_below_before_breakeven: #currentPrice <= entryPrice - tpInTicks*tickSize/2: # tp/2
-                        followingSl = 0 # => breakeven
+                    # elif times_below_breakeven_treshold>0 and times_below_breakeven>=times_below_breakeven_treshold: #currentPrice <= entryPrice - tpInTicks*tickSize/2: # tp/2
+                    #     followingSl = 0 # => breakeven
 
-                    elif currentDate.hour >= 22:
+                    elif strategy.checkIfCanStopShortPosition(i) or currentDate.hour >= 22:
                         profit = (entryPrice-currentPrice)*tickValue*positionSize
                         tradesData.append({
                             "entry_date": entryDate, 
@@ -136,7 +136,7 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
                             "times_below_breakeven": times_below_breakeven,
                         })
                         position = Position.NONE
-                isFirstTradeCandle = False
+                # isFirstTradeCandle = False
 
             pbar.update(1)
 

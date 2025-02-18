@@ -1,5 +1,5 @@
-from strategies.Strategy import Strategy
 import pandas as pd
+from strategies.Strategy import Strategy
 from values_definition import Position, Trend
 
 
@@ -57,19 +57,19 @@ class DTP(Strategy):
     #         newSlInPips = tpInPips/4 #positif
     #     return newSlInPips
 
-    def price_crossed_above(self, prev_close_price, close_price, value):
-        if(prev_close_price < value and value < close_price ):
+    def price_crossed_above(self, prev_close_price, close_price, value) -> bool:
+        if(prev_close_price <= value and value < close_price ):
             return True
         else:
             return False
         
-    def price_crossed_below(self, prev_close_price, close_price, value):
-        if(prev_close_price >= value and value >= close_price ):
+    def price_crossed_below(self, prev_close_price, close_price, value) -> bool:
+        if(prev_close_price >= value and value > close_price ):
             return True
         else:
             return False
     
-    def get_2_nearest_pivot_levels(self, i, close):
+    def get_2_nearest_pivot_levels(self, i, close) -> tuple[float, float]:
         pivot_levels = self.df_M5.loc[i][["S3","S2","S1","PP","R1","R2","R3"]]
         closest_lower = None
         closest_higher = None
@@ -84,18 +84,18 @@ class DTP(Strategy):
 
     def verify_distance_from_pivot_level(self, i, position, close, tpInTicks) -> Position:
         support, resistance = self.get_2_nearest_pivot_levels(i, close)
-        pivot_level = self.df_M5.loc[i]["PP"]
-        if position is Position.LONG:
-            if close < pivot_level:
-                return Position.NONE
+        # pivot_level = self.df_M5.loc[i]["PP"]
+        if position == Position.LONG:
+            # if close < pivot_level:
+            #     return Position.NONE
             tp = close + tpInTicks*self.minTick 
             if tp < resistance: 
                 return position
             else: 
                 return Position.NONE
-        elif position is Position.SHORT:
-            if close > pivot_level:
-                return Position.NONE
+        elif position == Position.SHORT:
+            # if close > pivot_level:
+            #     return Position.NONE
             tp = close - tpInTicks*self.minTick
             if tp > support: 
                 return position
@@ -150,7 +150,7 @@ class DTP(Strategy):
                 convergence_UTs = Trend.BEARISH
 
        
-        if (convergence_UTs is Trend.BULLISH):
+        if (convergence_UTs == Trend.BULLISH):
         
             if (self.price_crossed_above(prev_close, close, current_kijun) 
                 and close > current_tenkan
@@ -168,7 +168,7 @@ class DTP(Strategy):
                     position = Position.LONG
             
         
-        elif (convergence_UTs is Trend.BEARISH):
+        elif (convergence_UTs == Trend.BEARISH):
         
             if (self.price_crossed_below(prev_close, close, current_kijun) 
                 and close < current_tenkan
@@ -188,4 +188,15 @@ class DTP(Strategy):
         position = self.verify_distance_from_pivot_level(i, position, close, tpInTicks)      
         
         return position
-        
+    
+    def checkIfCanStopLongPosition(self, i: int) -> bool:
+        close = self.df_M5.loc[i]["close"]
+        prev_close = self.df_M5.loc[i-1]["close"]
+        current_kijun = self.df_M5.loc[i]["kijun"]
+        return self.price_crossed_below(prev_close, close, current_kijun) 
+    
+    def checkIfCanStopShortPosition(self, i: int) -> bool:
+        close = self.df_M5.loc[i]["close"]
+        prev_close = self.df_M5.loc[i-1]["close"]
+        current_kijun = self.df_M5.loc[i]["kijun"]
+        return self.price_crossed_above(prev_close, close, current_kijun) 

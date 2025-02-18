@@ -7,6 +7,14 @@ class Strategy(ABC):
     def checkIfCanEnterPosition(self, i: int) -> Position:
         pass
 
+    @abstractmethod 
+    def checkIfCanStopLongPosition(self, i: int) -> bool:
+        pass
+    
+    @abstractmethod 
+    def checkIfCanStopShortPosition(self, i: int) -> bool:
+        pass
+    
     # @abstractmethod
     # def computeIndicator(self, i: int):
     #     pass
