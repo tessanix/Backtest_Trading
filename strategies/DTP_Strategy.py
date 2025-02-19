@@ -189,14 +189,29 @@ class DTP(Strategy):
         
         return position
     
-    def checkIfCanStopLongPosition(self, i: int) -> bool:
-        close = self.df_M5.loc[i]["close"]
-        prev_close = self.df_M5.loc[i-1]["close"]
+    def checkIfCanStopLongPosition(self, i: int, method:int) -> bool:
         current_kijun = self.df_M5.loc[i]["kijun"]
-        return self.price_crossed_below(prev_close, close, current_kijun) 
+
+        if method == 1:
+            high = self.df_M5.loc[i]["high"]
+            return high <= current_kijun
+        
+        elif method == 2:
+            close = self.df_M5.loc[i]["close"]
+            open = self.df_M5.loc[i]["open"]
+            return close < open and open <= current_kijun
+        
+    def checkIfCanStopShortPosition(self, i: int, method:int) -> bool:
+        current_kijun = self.df_M5.loc[i]["kijun"]
+
+        if method == 1:
+            low = self.df_M5.loc[i]["low"]
+            return low >= current_kijun
+        
+        elif method == 2:
+            close = self.df_M5.loc[i]["close"]
+            open = self.df_M5.loc[i]["open"]
+            return close > open and open >= current_kijun
+
     
-    def checkIfCanStopShortPosition(self, i: int) -> bool:
-        close = self.df_M5.loc[i]["close"]
-        prev_close = self.df_M5.loc[i-1]["close"]
-        current_kijun = self.df_M5.loc[i]["kijun"]
-        return self.price_crossed_above(prev_close, close, current_kijun) 
+  
