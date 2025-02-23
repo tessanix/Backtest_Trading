@@ -201,6 +201,13 @@ class DTP(Strategy):
             open = self.df_M5.loc[i]["open"]
             return close < open and open <= current_kijun
         
+        if method == 3:
+            current_tenkan = self.df_M5.loc[i]["tenkan"]
+            high = self.df_M5.loc[i]["high"]
+            close = self.df_M5.loc[i]["close"]
+            open = self.df_M5.loc[i]["open"]
+            return (high <= current_tenkan) or (close < open and open <= current_kijun)
+        
     def checkIfCanStopShortPosition(self, i: int, method:int) -> bool:
         current_kijun = self.df_M5.loc[i]["kijun"]
 
@@ -212,6 +219,14 @@ class DTP(Strategy):
             close = self.df_M5.loc[i]["close"]
             open = self.df_M5.loc[i]["open"]
             return close > open and open >= current_kijun
+        
+        if method == 3:
+            current_tenkan = self.df_M5.loc[i]["tenkan"]
+            low = self.df_M5.loc[i]["low"]
+            close = self.df_M5.loc[i]["close"]
+            open = self.df_M5.loc[i]["open"]
+            return (low >= current_tenkan) or (close > open and open >= current_kijun)
+        
 
     
   
