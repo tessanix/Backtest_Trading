@@ -1,6 +1,7 @@
 import pandas as pd
 import pickle 
 import numpy as np
+import matplotlib.pyplot as plt
 
 ### SAVE THE DATA ###
 def save_object(obj, filename):
@@ -36,12 +37,15 @@ def compute_Ichimoku_on_DataFrame(df: pd.DataFrame):
     return df
 
 
-def create_df_M5(use3UT=False, chopPeriod=14):
+def create_df_M5(use3UT=False): #, windowForLevels=12):
     path = "C:/Users/tessa/MotiveWave Data/"
     start_date = pd.to_datetime('2020-03-24 12:00:00') #data are weird before this data (a problem from data provider???)
+
     ### M5 ###
     df_M5 = pd.read_csv(
-        filepath_or_buffer=path+"@MES.CME.TOP_STEP_5.csv",
+        #filepath_or_buffer=path+"@MES.CME.TOP_STEP_1.csv",
+        filepath_or_buffer=path+"@CL.NYMEX.TOP_STEP_1.csv",
+
         names=["datetime", "open", "high", "low","close", "volume"],
         header=None,
         delimiter=","
@@ -61,7 +65,7 @@ def create_df_M5(use3UT=False, chopPeriod=14):
         df_M15['datetime'] = pd.to_datetime(df_M15['datetime'], format='%d/%m/%Y %H:%M:%S')
         df_M15 = df_M15[(df_M15['datetime'] >= start_date)]
         df_M15 = compute_Ichimoku_on_DataFrame(df_M15)
-
+        
         ### H1 ###
         df_H1 = pd.read_csv(
             filepath_or_buffer=path+"@MES.CME.TOP_STEP_60.csv",
@@ -72,7 +76,6 @@ def create_df_M5(use3UT=False, chopPeriod=14):
         df_H1['datetime'] = pd.to_datetime(df_H1['datetime'], format='%d/%m/%Y %H:%M:%S')
         df_H1 = df_H1[(df_H1['datetime'] >= start_date)]
         df_H1 = compute_Ichimoku_on_DataFrame(df_H1)
-
 
         ### ADD SSA AND SSB DATA FROM M15 AND H1 ###
         df_M5 = pd.merge(df_M5, df_M15[['datetime', 'ssa', 'ssb']], on='datetime', how='left', suffixes = ["", "_m15"])
@@ -112,53 +115,78 @@ def create_df_M5(use3UT=False, chopPeriod=14):
     # Affichage du DataFrame mis à jour
     df_M5.dropna(inplace=True)
     df_M5.reset_index(inplace=True)
-    df_M5["chop"] = choppiness_index(df_M5, chopPeriod)
+
+    # df_M15['support']    = np.where(df_M15.low == df_M15.low.rolling(windowForLevels, center=True).min(), df_M15.low, 0) #C'est tricher car on utilise center=True mais on l'utilise quand meme pour un gain de temps de backtest
+    # df_M15['resistance'] = np.where(df_M15.high == df_M15.high.rolling(windowForLevels, center=True).max(), df_M15.high, 0)
+    
+    # ### ADD SUPPORT AND RESISTANCE DATA FROM M15 ###
+    # df_M5 = pd.merge(df_M5, df_M15[['datetime', 'support', 'resistance']], on='datetime', how='left', suffixes = ["", "_m15"])
+    # df_M5["chop"] = choppiness_index(df_M5, chopPeriod)
+    # df_M5.dropna(inplace=True)
+    # df_M5.reset_index(inplace=True)
 
     return df_M5
 
 
 def sort_by_winrate(item):
     _, dict_values = item
-    return dict_values['winrate (%)']
+    return dict_values['Winrate [%]']
 
 def sort_by_total_pnl(item):
     _, dict_values = item
-    return dict_values['total_pnl_from_start (%)']
+    return dict_values['Total return net [%]']
 
-def create_winrate_dictionnary(trades_database, sort_option):
-    tickSize = 0.25
+def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
     winrate_dictionnary = {}
 
     for id, trade_data in trades_database.items():
-        df, sl, tp, onlyUSSession, sm = trade_data
+        df, sl, tp, onlyUSSession, sm, use3UT = trade_data #, nbr_of_points, delta_in_ticks, windowForLevels = trade_data
 
-        loser_entry_price = df.loc[df['profit_from_start(%)']<=0, 'entry_price']
-        loser_exit_price = df.loc[df['profit_from_start(%)']<=0, 'exit_price']
+        loser_entry_price = df.loc[df['profit_from_start(%)']<0, 'entry_price']
+        loser_exit_price = df.loc[df['profit_from_start(%)']<0, 'exit_price']
         avg_real_sl_executed = (abs(loser_entry_price-loser_exit_price).mean())/tickSize
 
-        wins = df.loc[df['profit_from_start(%)']>=0, 'position'].count()
+        wins = df.loc[df['profit_from_start(%)']>0, 'position'].count()
         loss = df.loc[df['profit_from_start(%)']<0, 'position'].count()
         winrate = 0.0 if loss+wins == 0.0 else 100*wins/(loss+wins)
         breakevens = df.loc[df['profit_from_start(%)']==0, 'position'].count()
-        avg_gain_from_start = df.loc[df['profit_from_start(%)']>=0, 'profit_from_start(%)'].mean()
-        avg_loss_from_start = df.loc[df['profit_from_start(%)']<0, 'profit_from_start(%)'].mean()
+        # avg_gain_from_start = df.loc[df['profit_from_start(%)']>0, 'profit_from_start(%)'].mean()
+        # avg_loss_from_start = df.loc[df['profit_from_start(%)']<0, 'profit_from_start(%)'].mean()
+
+        avg_gain_including_fees_from_start = df.loc[df['profit_including_fees_from_start(%)']>0, 'profit_including_fees_from_start(%)'].mean()
+        avg_loss_including_fees_from_start = df.loc[df['profit_including_fees_from_start(%)']<0, 'profit_including_fees_from_start(%)'].mean()
+
         # median_times_below_breakeven = df['times_below_breakeven'].median()
-        total_pnl_from_start = df['profit_from_start(%)'].sum()
+        total_return_without_fees_from_start = df['profit_from_start(%)'].sum()
+        total_return_including_fees_from_start = df['profit_including_fees_from_start(%)'].sum()
+
         quantiles_duration = (df["exit_date"]-df["entry_date"]).quantile([0.50,0.75])
+        mean_tp = tp[0]+tp[1]/2
 
         winrate_dictionnary[id] = {
-            'winrate (%)': round(winrate, 3), 
-            'risk_ratio': round(tp/sl, 2), 
-            "total_pnl_from_start (%)": round(total_pnl_from_start, 2),
-            "avg_gain_from_start (%)": round(avg_gain_from_start, 2),
-            "avg_loss_from_start (%)": round(avg_loss_from_start,2),
-            "median duration": quantiles_duration.loc[0.50], 
-            "75percent duration": quantiles_duration.loc[0.75],
-            "avg_real_sl_executed":avg_real_sl_executed,
-            'TP/SL (Ticks)': (tp, sl),
-            'nbr wins/loss/breakeven' : (wins, loss, breakevens),
+            'Winrate [%]': round(winrate, 3), 
+            "Total return brut [%]": round(total_return_without_fees_from_start, 2),
+            "Total return net [%]": round(total_return_including_fees_from_start, 2),
+            # "Avg. gain brut [%]": round(avg_gain_from_start, 2),
+            # "Avg. loss brut [%]": round(avg_loss_from_start,2),
+            "Avg. gain net [%]": round(avg_gain_including_fees_from_start, 2),
+            "Avg. loss net [%]": round(avg_loss_including_fees_from_start,2),
+            'Risk ratio': round(mean_tp/avg_real_sl_executed, 2), 
+            'Nbr Wins/Loss/Breakeven' : (wins, loss, breakevens),
+            "Avg. executed SL [Ticks]": round(avg_real_sl_executed, 1),
+            'TP [Ticks]': (tp[0], tp[1]),
+            "Q2 duration (médiane)": quantiles_duration.loc[0.50], 
+            "Q3 duration (75%)": quantiles_duration.loc[0.75],
             "stop_method": sm,
             'US_session_only' : onlyUSSession,
+            'use3UT': use3UT,
+            # 'mta':mta,
+            # 'chopValue': chopValue, 
+            # 'chopPeriod':
+            # 'nbr_of_points':nbr_of_points,
+            # 'delta_in_ticks':delta_in_ticks,
+            # 'windowForLevels':windowForLevels,
+            # "ticksAbove": ticksAbove
             #'nbr_of_trades': wins.item()+loss.item(), 
         }
     if sort_option == 1:
@@ -184,3 +212,42 @@ def choppiness_index(df, period=14):
     
     chop = 100 * (np.log10(tr_sum) - np.log10(max_range)) / np.log10(period)
     return chop
+
+def plot_backtested_return_curve(
+    pathOfData='trade_datas/basicEntries_3UT_levels_breakeven=0_StrategyStop1&2.pkl',
+    plotAllDatas=False,
+    dataIdsSelected=[8,14],
+    plotSize = (20,16)
+):
+    trades_database = load_object(pathOfData)
+    selected_ids = trades_database.keys() if plotAllDatas else dataIdsSelected
+
+    plt.figure(figsize=plotSize)
+
+    for id in selected_ids:
+        df_temp =  trades_database[id][0]
+
+        # Définir 'datetime' comme index pour pouvoir utiliser resample
+        df_temp.set_index('entry_date', inplace=True)
+
+        # Resampler les données par semaine (par exemple, la somme des profits par semaine)
+        df_temp = df_temp.resample('W').agg({'profit_from_start(%)': ['sum']})
+
+        capital = 50_000
+        l = []
+        for profit in df_temp['profit_from_start(%)']["sum"]:
+            capital += 50_000 * profit/ 100
+            l.append(capital)
+
+        plt.plot(df_temp.index, l, label=f"Strategy {id}")  # Use a label for each plot for better identification
+
+        del df_temp
+
+    # Add labels and title
+    plt.xlabel("Time")
+    plt.ylabel("Capital")
+    plt.xticks(rotation=45)
+    plt.title("Capital Growth Across Multiple Strategies")
+    plt.legend()  # Show legend for all plots
+    plt.grid(True)
+    plt.show()

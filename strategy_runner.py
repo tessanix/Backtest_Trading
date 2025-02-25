@@ -3,22 +3,24 @@ import pandas as pd
 from values_definition import Position
 from strategies.Strategy import Strategy
 
-def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:bool, stopMethod:int) -> pd.DataFrame:
+def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:tuple[int,int], usSession:bool, stopMethod:int, feesPerTrade:float) -> pd.DataFrame:
 
     CAPITAL = 50_000.0 # constant
     followingSl = slInTicks
 
-    tickValue = 1.25
-    tickSize = 0.25 # 1 tick = variation of price of 0.25 for SP500
-    positionSize = 3 #nbr of contracts
+    tickValue = 10 #1.25
+    tickSize = 0.01 #0.25 # 1 tick = variation of price of 0.25 for SP500
+    positionSize = 1 #nbr of contracts
 
     position = Position.NONE
     entryDate = ""
     entryPrice = 0.0
     tradesData = []
     # maxBar = len(strategy.df_M5) - 1 
-    allowed_trading_hours_start = 7 if usSession == False else 16
+    usSessionHour = 16
+    allowed_trading_hours_start = 7 if usSession == False else usSessionHour
     allowed_trading_hours_end = 20
+    tpInTicksChosen = tpInTicks[0]
     # times_below_breakeven = 0
     # isFirstTradeCandle = False
 
@@ -27,10 +29,15 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
 
         currentPrice = strategy.df_M5.loc[i]["close"]
         currentDate = strategy.df_M5.loc[i]["datetime"]
+        if currentDate.hour < usSessionHour:
+            tpInTicksChosen = tpInTicks[0]
+        else:
+            tpInTicksChosen = tpInTicks[1]
 
         if position == Position.NONE:
             if (allowed_trading_hours_start <= currentDate.hour and currentDate.hour < allowed_trading_hours_end):
-                position = strategy.checkIfCanEnterPosition(i, tpInTicks)
+
+                position = strategy.checkIfCanEnterPosition(i, tpInTicksChosen)
                 entryDate = currentDate
                 entryPrice = currentPrice
                 # times_below_breakeven = 0
@@ -41,7 +48,7 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
             # prevPrice = strategy.df_M5.loc[i-1]["close"]
             if position == Position.LONG:
                 sl = entryPrice - followingSl*tickSize
-                tp = entryPrice + tpInTicks*tickSize
+                tp = entryPrice + tpInTicksChosen*tickSize
 
                 # if (not isFirstTradeCandle) and (prevPrice <= entryPrice) and (entryPrice < currentPrice):
                 #     times_below_breakeven+=1
@@ -54,22 +61,22 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
                         "entry_price": entryPrice, 
                         "exit_price": currentPrice,
                         "position" : position,
-                        # "profit": profit,
-                        "profit_from_start(%)":(profit/CAPITAL)*100,
+                        "profit_including_fees_from_start(%)": 100*(profit-feesPerTrade)/CAPITAL,
+                        "profit_from_start(%)":100*profit/CAPITAL,
                         # "times_below_breakeven": times_below_breakeven,
                     })
                     position = Position.NONE
 
                 elif currentPrice >= tp:# WIN
-                    profit = tpInTicks*tickValue*positionSize
+                    profit = tpInTicksChosen*tickValue*positionSize
                     tradesData.append({
                         "entry_date": entryDate, 
                         "exit_date": currentDate, 
                         "entry_price": entryPrice, 
                         "exit_price": currentPrice,
                         "position" : position,
-                        # "profit": profit,
-                        "profit_from_start(%)":(profit/CAPITAL)*100,
+                        "profit_including_fees_from_start(%)": 100*(profit-feesPerTrade)/CAPITAL,
+                        "profit_from_start(%)":100*profit/CAPITAL,
                         # "times_below_breakeven": times_below_breakeven,
                     })
                     position = Position.NONE
@@ -85,15 +92,15 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
                         "entry_price": entryPrice, 
                         "exit_price": currentPrice,
                         "position" : position,
-                        # "profit": profit,
-                        "profit_from_start(%)":(profit/CAPITAL)*100,
+                        "profit_including_fees_from_start(%)": 100*(profit-feesPerTrade)/CAPITAL,
+                        "profit_from_start(%)":100*profit/CAPITAL,
                         # "times_below_breakeven": times_below_breakeven,
                     })
                     position = Position.NONE
 
             elif position == Position.SHORT:
                 sl = entryPrice + followingSl*tickSize
-                tp = entryPrice - tpInTicks*tickSize
+                tp = entryPrice - tpInTicksChosen*tickSize
 
                 # if (not isFirstTradeCandle) and (prevPrice >= entryPrice) and (entryPrice > currentPrice):
                 #     times_below_breakeven+=1
@@ -106,22 +113,22 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
                         "entry_price": entryPrice,
                         "exit_price": currentPrice,
                         "position" : position,
-                        # "profit": profit,
-                        "profit_from_start(%)":(profit/CAPITAL)*100,
+                        "profit_including_fees_from_start(%)": 100*(profit-feesPerTrade)/CAPITAL,
+                        "profit_from_start(%)":100*profit/CAPITAL,
                         # "times_below_breakeven": times_below_breakeven,
                     })
                     position = Position.NONE
 
                 elif currentPrice <= tp: # WIN
-                    profit = tpInTicks*tickValue*positionSize
+                    profit = tpInTicksChosen*tickValue*positionSize
                     tradesData.append({
                         "entry_date": entryDate, 
                         "exit_date": currentDate, 
                         "entry_price": entryPrice,
                         "exit_price": currentPrice, 
                         "position" : position,
-                        # "profit": profit,
-                        "profit_from_start(%)":(profit/CAPITAL)*100,
+                        "profit_including_fees_from_start(%)": 100*(profit-feesPerTrade)/CAPITAL,
+                        "profit_from_start(%)":100*profit/CAPITAL,
                         # "times_below_breakeven": times_below_breakeven,
                     })
                     position = Position.NONE
@@ -137,8 +144,8 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:int, usSession:boo
                         "entry_price": entryPrice, 
                         "exit_price": currentPrice, 
                         "position" : position,
-                        # "profit": profit,
-                        "profit_from_start(%)":(profit/CAPITAL)*100,
+                        "profit_including_fees_from_start(%)": 100*(profit-feesPerTrade)/CAPITAL,
+                        "profit_from_start(%)":100*profit/CAPITAL,
                         # "times_below_breakeven": times_below_breakeven,
                     })
                     position = Position.NONE

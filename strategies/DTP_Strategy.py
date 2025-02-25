@@ -5,69 +5,90 @@ from values_definition import Position, Trend
 
 class DTP(Strategy):
 
-    def __init__(self, df:pd.DataFrame, use3UT:bool, useAllEntryPoints:bool):
-        self.minTick = 0.25 # tick size for SP500 (/ES)
-        
+    def __init__(self, df:pd.DataFrame, use3UT:bool, useAllEntryPoints:bool): #, methodTenkanAngle:int ):#, nbr_of_points:int, delta_in_ticks:int):#chopValue:float):
+        self.minTick = 0.01 #0.25 # tick size for SP500 (/ES)
+        # self.nbr_of_points = nbr_of_points
+        # self.delta_in_ticks = delta_in_ticks
+        self.methodTenkanAngle = 2
         self.df_M5 = df
         self.use3UT = use3UT
         self.useAllEntryPoints = useAllEntryPoints
+ 
+    def price_crossed_above(self, prev_close_price, close_price, value, byHowFar=0) -> bool:
+        if(prev_close_price <= value and value+byHowFar < close_price ):
+            return True
+        else:
+            return False
+        
+    def price_crossed_below(self, prev_close_price, close_price, value, byHowFar=0) -> bool:
+        if(prev_close_price >= value and value-byHowFar > close_price ):
+            return True
+        else:
+            return False
     
-    # def determineSlAndTp(self, capital:float, price: float, keyLevels: list[float]) -> tuple[bool, float, float]:
-    #     slInPips = -utility.getSlInPipsForTrade(
-    #                         invested = capital*self.maxRisk,
-    #                         pipValue = 50, # valeur du pip pour le SP500 pour un lot standard = 50
-    #                         lotSize = 0.01 # micro lot
-    #                     )
-    #     tpInPips = -slInPips
-    #     resistance = support = 0
-    #     done = False
-
-    #     for i in range(len(keyLevels)):
-    #         sl = price+slInPips
-    #         # keyLevels[i==0] is the greatest level
-    #         if i==0 and sl < keyLevels[i] and keyLevels[i] < price: 
-    #             slInPips = keyLevels[i]-price # négatif
-    #             done = True
+    # def get_last_support(self, i, nbr_of_points=3, delta_in_ticks=5):
+    #     support_values = []
+    #     for index in range(i, -1, -1):  # Recherche de haut en bas
+    #         if len(support_values) < nbr_of_points:
+    #             support_value = self.df_M5.loc[index, 'support']
+    #             if support_value>0:
+    #                 support_values.append(support_value)
+    #         else:
     #             break
-    #         elif i!=0 and keyLevels[i] < price and price < keyLevels[i-1]:
-    #             resistance = keyLevels[i-1]
-    #             support = keyLevels[i]
+        
+    #     support = sum(support_values)/len(support_values)
+    #     for supp in support_values[1:]:
+    #         if abs(support_values[0]-supp) > delta_in_ticks*self.minTick:
+    #             support = 0 # no support
+    #             break
+    #     return support
+    
+    # def get_last_resistance(self, i, nbr_of_points=3, delta_in_ticks=5):
+    #     resistance_values = []
+    #     for index in range(i, -1, -1):  # Recherche de haut en bas
+    #         resistance_value = self.df_M5.loc[index, 'resistance']
+    #         if  len(resistance_values) < nbr_of_points:
+    #             if resistance_value>0:
+    #                 resistance_values.append(resistance_value)
+    #         else: 
     #             break
 
-    #     if done: 
-    #         return False, slInPips, tpInPips
+    #     resistance = sum(resistance_values)/len(resistance_values)
+    #     for res in resistance_values[1:]:
+    #         if abs(resistance_values[0]-res) > delta_in_ticks*self.minTick:
+    #             resistance = 0 # no resistance
+    #             break
+    #     return  resistance
+    
+    # def verify_distance_from_last_level(self, i, position, close, tpInTicks, nbr_of_points, delta_in_ticks) -> Position:
+    #     # if nbr_of_points == 0 or delta_in_ticks == 0:
+    #         # return position
         
-    #     middleSR = (resistance+support)/2
+    #     if position == Position.LONG:
+    #         resistance = self.get_last_resistance(i, nbr_of_points, delta_in_ticks)
+    #         tp = close + tpInTicks*self.minTick 
 
-    #     isBelowMiddleSR = price < middleSR
+    #         if resistance == 0:
+    #             return position
+    #         elif tp < resistance: 
+    #             return position
+    #         else: 
+    #             return Position.NONE
+            
+    #     elif position == Position.SHORT:
+    #         support = self.get_last_support(i, nbr_of_points, delta_in_ticks)
+    #         tp = close - tpInTicks*self.minTick
 
-    #     if isBelowMiddleSR:
-    #         sl = price+slInPips
-    #         tp = price+tpInPips
-    #         if sl < support and price*0.02 <= price-support: 
-    #             slInPips = support-price # négatif
-    #         if tp < resistance: 
-    #             tpInPips = resistance-price
+    #         if support == 0: # pas de support détecté
+    #             return position
+    #         elif tp > support: 
+    #             return position
+    #         else: 
+    #             return Position.NONE
+            
+    #     else: 
+    #         return Position.NONE
 
-    #     return isBelowMiddleSR, slInPips, tpInPips
-
-    # def updateSl(self, currentPrice: float, entryPrice:float, tpInPips:float) -> float:
-    #     newSlInPips = 0
-    #     if self.useUpdateSl and tpInPips/2 < currentPrice-entryPrice:
-    #         newSlInPips = tpInPips/4 #positif
-    #     return newSlInPips
-
-    def price_crossed_above(self, prev_close_price, close_price, value) -> bool:
-        if(prev_close_price <= value and value < close_price ):
-            return True
-        else:
-            return False
-        
-    def price_crossed_below(self, prev_close_price, close_price, value) -> bool:
-        if(prev_close_price >= value and value > close_price ):
-            return True
-        else:
-            return False
     
     def get_2_nearest_pivot_levels(self, i, close) -> tuple[float, float]:
         pivot_levels = self.df_M5.loc[i][["S3","S2","S1","PP","R1","R2","R3"]]
@@ -103,20 +124,33 @@ class DTP(Strategy):
                 return Position.NONE
         else: 
             return Position.NONE
-          
+
+    def checkTenkanAngleBullish(self, i, method):
+        if method == 1:
+            if self.df_M5.loc[i-1]["tenkan"] < self.df_M5.loc[i]["tenkan"]:
+                return True
+        elif method == 2:
+            if self.df_M5.loc[i-1]["tenkan"] <= self.df_M5.loc[i]["tenkan"]:
+                return True
+        return False
+    
+    def checkTenkanAngleBearish(self, i, method):
+        if method == 1:
+            if self.df_M5.loc[i-1]["tenkan"] > self.df_M5.loc[i]["tenkan"]:
+                return True
+        elif method == 2:
+            if self.df_M5.loc[i-1]["tenkan"] >= self.df_M5.loc[i]["tenkan"]:
+                return True
+        return False
 
     def checkIfCanEnterPosition(self, i: int, tpInTicks:int) -> Position:
         position = Position.NONE
 
-        current_tenkan = self.df_M5.loc[i]["tenkan"]
+        # current_tenkan = self.df_M5.loc[i]["tenkan"]
         current_kijun = self.df_M5.loc[i]["kijun"]
         current_ssa = self.df_M5.loc[i]["ssa"]
         current_ssb = self.df_M5.loc[i]["ssb"]
 
-        current_ssa_m15 = None
-        current_ssb_m15 = None
-        current_ssa_h1 = None
-        current_ssb_h1 = None
         convergence_UTs = Trend.NONE # "bullish" or "bearish"
 
         close = self.df_M5.loc[i]["close"]
@@ -152,39 +186,45 @@ class DTP(Strategy):
        
         if (convergence_UTs == Trend.BULLISH):
         
-            if (self.price_crossed_above(prev_close, close, current_kijun) 
-                and close > current_tenkan
-                and close > current_kijun + 2*self.minTick 
-                and self.df_M5.loc[i-1]["tenkan"] <= current_tenkan
+            if (self.price_crossed_above(prev_close, close, current_kijun, byHowFar=2*self.minTick) 
+                and close > self.df_M5.loc[i]["tenkan"]
+                # and close > current_kijun + self.ticksAbove*self.minTick 
+                # and self.df_M5.loc[i-1]["kijun"] <= self.df_M5.loc[i]["kijun"]
+                and self.checkTenkanAngleBullish(i, method=self.methodTenkanAngle)
+                #and self.df_M5.loc[i-1]["tenkan"] < self.df_M5.loc[i]["tenkan"]
+                #and self.chop_crossed_below(self.chopValue, i)
             ):
                 position = Position.LONG
 
-            elif(self.useAllEntryPoints):
-                if (self.price_crossed_above(prev_close, close, current_tenkan)
-                    and self.df_M5.loc[i-20:i]["low"].min() <= self.df_M5.loc[i-20:i]["kijun"].min()
-                    and current_tenkan > current_kijun
-                    and self.df_M5.loc[i-1]["tenkan"] <= current_tenkan
-                ):
-                    position = Position.LONG
+            # elif(self.useAllEntryPoints):
+            #     if (self.price_crossed_above(prev_close, close, current_tenkan)
+            #         and self.df_M5.loc[i-20:i]["low"].min() <= self.df_M5.loc[i-20:i]["kijun"].min()
+            #         and current_tenkan > current_kijun
+            #         and self.df_M5.loc[i-1]["tenkan"] <= current_tenkan
+            #         #and self.chop_crossed_below(self.chopValue, i)
+            #     ):
+            #         position = Position.LONG
             
         
         elif (convergence_UTs == Trend.BEARISH):
         
-            if (self.price_crossed_below(prev_close, close, current_kijun) 
-                and close < current_tenkan
-                and close <  current_kijun - 2*self.minTick
-                and self.df_M5.loc[i-1]["tenkan"] >= current_tenkan
+            if (self.price_crossed_below(prev_close, close, current_kijun, byHowFar=2*self.minTick) 
+                and close < self.df_M5.loc[i]["tenkan"]
+                # and close <  current_kijun - self.ticksAbove*self.minTick
+                # and self.df_M5.loc[i-1]["kijun"] >= self.df_M5.loc[i]["kijun"]
+                and self.checkTenkanAngleBearish(i, method=self.methodTenkanAngle)
+                #and self.df_M5.loc[i-1]["tenkan"] > self.df_M5.loc[i]["tenkan"]
             ): 
                 position = Position.SHORT
 
-            elif(self.useAllEntryPoints):
-                if (self.price_crossed_below(prev_close, close, current_tenkan)
-                    and self.df_M5.loc[i-20:i]["high"].max() >= self.df_M5.loc[i-20:i]["kijun"].max()
-                    and current_tenkan < current_kijun
-                    and self.df_M5.loc[i-1]["tenkan"] >= current_tenkan
-                ):
-                    position = Position.SHORT
-
+            # elif(self.useAllEntryPoints):
+            #     if (self.price_crossed_below(prev_close, close, current_tenkan)
+            #         and self.df_M5.loc[i-20:i]["high"].max() >= self.df_M5.loc[i-20:i]["kijun"].max()
+            #         and current_tenkan < current_kijun
+            #         and self.df_M5.loc[i-1]["tenkan"] >= current_tenkan
+            #     ):
+            #         position = Position.SHORT
+        #position = self.verify_distance_from_last_level(i, position, close, tpInTicks, self.nbr_of_points, self.delta_in_ticks)
         position = self.verify_distance_from_pivot_level(i, position, close, tpInTicks)      
         
         return position
