@@ -2,9 +2,14 @@ import pandas as pd
 import pickle 
 import numpy as np
 import matplotlib.pyplot as plt
+import re
+from values_definition import Position
 
 ### SAVE THE DATA ###
-def save_object(obj, filename):
+def save_object(obj, filename, sanitized=True):
+    # Remove invalid characters for Windows file paths
+    if sanitized:
+        filename = re.sub(r'[<>:"|?*]', '-', filename)
     with open(filename, 'wb') as outp:  # Overwrites any existing file.
         pickle.dump(obj, outp, pickle.HIGHEST_PROTOCOL)
 
@@ -37,63 +42,66 @@ def compute_Ichimoku_on_DataFrame(df: pd.DataFrame):
     return df
 
 
-def create_df_M5(use3UT=False): #, windowForLevels=12):
-    path = "C:/Users/tessa/MotiveWave Data/"
-    start_date = pd.to_datetime('2020-03-24 12:00:00') #data are weird before this data (a problem from data provider???)
+def create_df(timeFramesUsedInMinutes=["1"], instrument="MES", 
+              start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00"): #, chopPeriod:int=14): #, windowForLevels=12):
+    root_path = "C:/Users/tessa/MotiveWave Data/"
+    start_date = pd.to_datetime(start_date) #data are weird before this data (a problem from data provider???)
+    end_date = pd.to_datetime(end_date)
+    main_df = pd.DataFrame()
 
-    ### M5 ###
-    df_M5 = pd.read_csv(
-        #filepath_or_buffer=path+"@MES.CME.TOP_STEP_1.csv",
-        filepath_or_buffer=path+"@CL.NYMEX.TOP_STEP_1.csv",
-
-        names=["datetime", "open", "high", "low","close", "volume"],
-        header=None,
-        delimiter=","
-    )
-    df_M5['datetime'] = pd.to_datetime(df_M5['datetime'], format='%d/%m/%Y %H:%M:%S')
-    df_M5 = df_M5[(df_M5['datetime'] >= start_date)]
-    df_M5 = compute_Ichimoku_on_DataFrame(df_M5)
-
-    if use3UT:
-        ### M15 ###
-        df_M15 = pd.read_csv(
-            filepath_or_buffer=path+"@MES.CME.TOP_STEP_15.csv",
-            names=["datetime", "open", "high", "low","close", "volume"],
-            header=None,
-            delimiter=","
-        )
-        df_M15['datetime'] = pd.to_datetime(df_M15['datetime'], format='%d/%m/%Y %H:%M:%S')
-        df_M15 = df_M15[(df_M15['datetime'] >= start_date)]
-        df_M15 = compute_Ichimoku_on_DataFrame(df_M15)
+    for idx, timeFrame in enumerate(timeFramesUsedInMinutes):
+        path =""
+        if instrument == "MES":
+            path = root_path+"@MES.CME.TOP_STEP_"+timeFrame+".csv"
+        elif instrument == "ES":
+            path = root_path+"@ES.CME.TOP_STEP_"+timeFrame+".csv"
+        elif instrument == "MNQ":
+            path = root_path+"@MNQ.CME.TOP_STEP_"+timeFrame+".csv"
+        elif instrument == "NQ":
+            path = root_path+"@NQ.CME.TOP_STEP_"+timeFrame+".csv"
+        elif instrument == "MCL":
+            path = root_path+"@MCL.NYMEX.TOP_STEP_"+timeFrame+".csv"
+        elif instrument == "CL":
+            path = root_path+"@CL.NYMEX.TOP_STEP_"+timeFrame+".csv"
         
-        ### H1 ###
-        df_H1 = pd.read_csv(
-            filepath_or_buffer=path+"@MES.CME.TOP_STEP_60.csv",
-            names=["datetime", "open", "high", "low","close", "volume"],
-            header=None,
-            delimiter=","
-        )
-        df_H1['datetime'] = pd.to_datetime(df_H1['datetime'], format='%d/%m/%Y %H:%M:%S')
-        df_H1 = df_H1[(df_H1['datetime'] >= start_date)]
-        df_H1 = compute_Ichimoku_on_DataFrame(df_H1)
+        if idx == 0:
+            main_df = pd.read_csv(
+                filepath_or_buffer=path,
+                names=["datetime", "open", "high", "low","close", "volume"],
+                header=None,
+                delimiter=","
+            )
+            main_df['datetime'] = pd.to_datetime(main_df['datetime'], format='%d/%m/%Y %H:%M:%S')
+            if start_date < main_df.iloc[0]['datetime'] or main_df.iloc[-1]['datetime'] < end_date:
+                print("AAAAAAAAAAAAA error")
+                return KeyError
+            main_df = main_df[(start_date <= main_df['datetime']) & (main_df['datetime'] <= end_date)]
+            main_df = compute_Ichimoku_on_DataFrame(main_df)
+        else:
+            ### M15 ###
+            next_timeframe_df = pd.read_csv(
+                filepath_or_buffer=path,
+                names=["datetime", "open", "high", "low","close", "volume"],
+                header=None,
+                delimiter=","
+            )
+            next_timeframe_df['datetime'] = pd.to_datetime(next_timeframe_df['datetime'], format='%d/%m/%Y %H:%M:%S')
+            if start_date < next_timeframe_df.iloc[0]['datetime'] or next_timeframe_df.iloc[-1]['datetime'] < end_date:
+                return KeyError
+            next_timeframe_df = next_timeframe_df[(start_date <= next_timeframe_df['datetime'] ) & (next_timeframe_df['datetime'] <= end_date)]
+            next_timeframe_df = compute_Ichimoku_on_DataFrame(next_timeframe_df)
+            ### ADD SSA AND SSB DATA FROM SUPERIOR TIMEFRAME ###
+            suffixe = "_"+timeFrame
+            main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'ssa', 'ssb']], on='datetime', how='left', suffixes = ["", suffixe])
+            main_df["ssa"+suffixe] = main_df["ssa"+suffixe].ffill()
+            main_df["ssb"+suffixe] = main_df["ssa"+suffixe].ffill()
 
-        ### ADD SSA AND SSB DATA FROM M15 AND H1 ###
-        df_M5 = pd.merge(df_M5, df_M15[['datetime', 'ssa', 'ssb']], on='datetime', how='left', suffixes = ["", "_m15"])
-        df_M5["ssa_m15"] = df_M5["ssa_m15"].ffill()
-        df_M5["ssb_m15"] = df_M5["ssb_m15"].ffill()
-
-        df_M5 = pd.merge(df_M5, df_H1[['datetime', 'ssa', 'ssb']], on='datetime', how='left', suffixes = ["", "_h1"])
-        df_M5["ssa_h1"] = df_M5["ssa_h1"].ffill()
-        df_M5["ssb_h1"] = df_M5["ssb_h1"].ffill()
-
-        del df_M15
-        del df_H1
 
     # 1. Convertir la colonne datetime en index pour faciliter la resampling des données journalières
-    df_M5.set_index('datetime', inplace=True)
+    main_df.set_index('datetime', inplace=True)
 
     # 2. Calculer les prix journaliers : High, Low et Close (resampling daily)
-    df_daily = df_M5.resample('D').agg({'high': 'max', 'low': 'min', 'close': 'last'})
+    df_daily = main_df.resample('D').agg({'high': 'max', 'low': 'min', 'close': 'last'})
 
     # 3. Calculer les niveaux de point pivot (PP, R3, R2, R1, S1, S2, S3)
     df_daily['PP'] = (df_daily['high'] + df_daily['low'] + df_daily['close']) / 3
@@ -106,26 +114,26 @@ def create_df_M5(use3UT=False): #, windowForLevels=12):
 
     # 4. Fusionner ces points pivots journaliers dans le dataframe 5min
     # On va faire un merge sur l'index (qui est 'datetime' après resampling)
-    df_M5 = df_M5.merge(df_daily[['PP', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3']], left_index=True, right_index=True, how='left')
+    main_df = main_df.merge(df_daily[['PP', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3']], left_index=True, right_index=True, how='left')
     del df_daily
 
     # 5. Optionnel : remplir les valeurs manquantes si nécessaire (avec ffill ou bfill)
-    df_M5[['PP', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3']] = df_M5[['PP', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3']].ffill()
+    main_df[['PP', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3']] = main_df[['PP', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3']].ffill()
 
     # Affichage du DataFrame mis à jour
-    df_M5.dropna(inplace=True)
-    df_M5.reset_index(inplace=True)
+    main_df.dropna(inplace=True)
+    main_df.reset_index(inplace=True)
 
-    # df_M15['support']    = np.where(df_M15.low == df_M15.low.rolling(windowForLevels, center=True).min(), df_M15.low, 0) #C'est tricher car on utilise center=True mais on l'utilise quand meme pour un gain de temps de backtest
-    # df_M15['resistance'] = np.where(df_M15.high == df_M15.high.rolling(windowForLevels, center=True).max(), df_M15.high, 0)
+    # main_df['support']    = np.where(main_df.low == main_df.low.rolling(windowForLevels, center=True).min(), main_df.low, 0) #C'est tricher car on utilise center=True mais on l'utilise quand meme pour un gain de temps de backtest
+    # main_df['resistance'] = np.where(main_df.high == main_df.high.rolling(windowForLevels, center=True).max(), main_df.high, 0)
     
     # ### ADD SUPPORT AND RESISTANCE DATA FROM M15 ###
-    # df_M5 = pd.merge(df_M5, df_M15[['datetime', 'support', 'resistance']], on='datetime', how='left', suffixes = ["", "_m15"])
-    # df_M5["chop"] = choppiness_index(df_M5, chopPeriod)
-    # df_M5.dropna(inplace=True)
-    # df_M5.reset_index(inplace=True)
+    # main_df = pd.merge(main_df, df_M15[['datetime', 'support', 'resistance']], on='datetime', how='left', suffixes = ["", "_m15"])
+    # main_df["chop"] = choppiness_index(main_df, period=chopPeriod)
+    # main_df.dropna(inplace=True)
+    # main_df.reset_index(inplace=True)
 
-    return df_M5
+    return main_df
 
 
 def sort_by_winrate(item):
@@ -140,11 +148,15 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
     winrate_dictionnary = {}
 
     for id, trade_data in trades_database.items():
-        df, sl, tp, onlyUSSession, sm, use3UT = trade_data #, nbr_of_points, delta_in_ticks, windowForLevels = trade_data
+        df, sl, tp, onlyUSSession, sm, timeframes, tc, kc = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
 
         loser_entry_price = df.loc[df['profit_from_start(%)']<0, 'entry_price']
         loser_exit_price = df.loc[df['profit_from_start(%)']<0, 'exit_price']
         avg_real_sl_executed = (abs(loser_entry_price-loser_exit_price).mean())/tickSize
+        
+        winner_entry_price = df.loc[df['profit_from_start(%)']>0, 'entry_price']
+        winner_exit_price = df.loc[df['profit_from_start(%)']>0, 'exit_price']
+        avg_real_tp_executed = (abs(winner_entry_price-winner_exit_price).mean())/tickSize
 
         wins = df.loc[df['profit_from_start(%)']>0, 'position'].count()
         loss = df.loc[df['profit_from_start(%)']<0, 'position'].count()
@@ -161,7 +173,6 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
         total_return_including_fees_from_start = df['profit_including_fees_from_start(%)'].sum()
 
         quantiles_duration = (df["exit_date"]-df["entry_date"]).quantile([0.50,0.75])
-        mean_tp = tp[0]+tp[1]/2
 
         winrate_dictionnary[id] = {
             'Winrate [%]': round(winrate, 3), 
@@ -169,20 +180,23 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
             "Total return net [%]": round(total_return_including_fees_from_start, 2),
             # "Avg. gain brut [%]": round(avg_gain_from_start, 2),
             # "Avg. loss brut [%]": round(avg_loss_from_start,2),
-            "Avg. gain net [%]": round(avg_gain_including_fees_from_start, 2),
-            "Avg. loss net [%]": round(avg_loss_including_fees_from_start,2),
-            'Risk ratio': round(mean_tp/avg_real_sl_executed, 2), 
+            "Avg. gain net [%]": round(avg_gain_including_fees_from_start, 3),
+            "Avg. loss net [%]": round(avg_loss_including_fees_from_start,3),
+            'Risk ratio': round(avg_real_tp_executed/avg_real_sl_executed, 2), 
             'Nbr Wins/Loss/Breakeven' : (wins, loss, breakevens),
             "Avg. executed SL [Ticks]": round(avg_real_sl_executed, 1),
-            'TP [Ticks]': (tp[0], tp[1]),
+            'SL/TP1/TP2 [Ticks]': (sl, tp[0], tp[1]),
+            #'TP [Ticks]': (tp[0], tp[1]),
             "Q2 duration (médiane)": quantiles_duration.loc[0.50], 
             "Q3 duration (75%)": quantiles_duration.loc[0.75],
             "stop_method": sm,
             'US_session_only' : onlyUSSession,
-            'use3UT': use3UT,
+            'timeframes': timeframes,
+            'ticksCrossed': tc,
+            'kijuncross':kc,
+            # 'chopValue': chopVal, 
             # 'mta':mta,
-            # 'chopValue': chopValue, 
-            # 'chopPeriod':
+            # 'chopPeriod':chopPeriod,
             # 'nbr_of_points':nbr_of_points,
             # 'delta_in_ticks':delta_in_ticks,
             # 'windowForLevels':windowForLevels,
@@ -195,6 +209,24 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
         winrate_dictionnary = dict(sorted(winrate_dictionnary.items(), key=sort_by_total_pnl))
         
     return winrate_dictionnary
+
+def return_trade_datas_dataframe(trade_datas_name, sort_option=2):
+    trades_database = load_object('trade_datas/'+trade_datas_name)
+    winrate_dictionnary = create_winrate_dictionnary(trades_database, sort_option=sort_option)
+    return pd.DataFrame.from_dict(winrate_dictionnary, orient='index')
+
+def describe_daily_and_weekly_trade_datas(trade_datas_name, selected_Id=6):
+    pathOfData = 'trade_datas/'+trade_datas_name
+    trades_database = load_object(pathOfData)
+    df_temp =  trades_database[selected_Id][0]
+    # Définir 'datetime' comme index pour pouvoir utiliser resample
+    df_temp.set_index('entry_date', inplace=True)
+    # Resampler les données par semaine (par exemple, la somme des profits par semaine)
+    df_weekly = df_temp.resample('W').agg({'profit_including_fees_from_start(%)': ['sum']})
+    df_daily = df_temp.resample('D').agg({'profit_including_fees_from_start(%)': ['sum']})
+    del df_temp
+    print(df_daily.describe(),'\n', df_weekly.describe())
+
 
 def true_range(df):
     tr = pd.DataFrame(index=df.index)
@@ -251,3 +283,47 @@ def plot_backtested_return_curve(
     plt.legend()  # Show legend for all plots
     plt.grid(True)
     plt.show()
+
+
+def plot_bars_of_profit_for_every_weeks(name):
+    pathOfData = "trade_datas/"+name
+    trades_database = load_object(pathOfData)
+    selected_Id = 10
+    df_temp =  trades_database[selected_Id][0]
+    df_temp['exit_week'] = df_temp['exit_date'].dt.to_period('W')
+    result = df_temp.groupby(['exit_week']).agg({'profit_from_start(%)': ['sum']})
+
+    result = pd.DataFrame({
+        'week': result['profit_from_start(%)'].index,
+        'total_profit': [x[0] for x in result['profit_from_start(%)'].values]
+    })
+    # Affichage du graphique
+    plt.figure(figsize=(16, 10))
+    plt.bar(result['week'].astype(str), result['total_profit'], color='skyblue')
+
+    # Ajouter des labels et un titre
+    plt.xlabel('Semaine')
+    plt.ylabel('Profit Total')
+    plt.title('Profit Total par Semaine')
+
+    # Rotation des labels et espacement des étiquettes
+    plt.xticks(rotation=45, ha='right', fontsize=8)
+
+    # Espacement des étiquettes (afficher chaque 6ème semaine par exemple)
+    plt.xticks(ticks=range(0, len(result), 6))  # Afficher toutes les 6 semaines
+
+    # Affichage du graphique
+    plt.tight_layout()
+    plt.show()
+
+
+def get_winrate_by_short_and_long_position(name):
+    pathOfData = "trade_datas/"+name
+    trades_database = load_object(pathOfData)
+    selected_Id = 10
+    df_temp =  trades_database[selected_Id][0]
+    nbr_win_short = df_temp[(df_temp['profit_from_start(%)']>0) & (df_temp['position']==Position.SHORT)]['position'].count()
+    nbr_lose_short = df_temp[(df_temp['profit_from_start(%)']<0) & (df_temp['position']==Position.SHORT)]['position'].count()
+    nbr_win_long = df_temp[(df_temp['profit_from_start(%)']>0) & (df_temp['position']==Position.LONG)]['position'].count()
+    nbr_lose_long = df_temp[(df_temp['profit_from_start(%)']<0) & (df_temp['position']==Position.LONG)]['position'].count()
+    print(f'winrate short: {nbr_win_short/(nbr_win_short+nbr_lose_short)}, winrate long: {nbr_win_long/(nbr_win_long+nbr_lose_long)}')

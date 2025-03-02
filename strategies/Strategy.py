@@ -4,7 +4,7 @@ from values_definition import Position
 class Strategy(ABC):
 
     @abstractmethod 
-    def checkIfCanEnterPosition(self, i: int) -> Position:
+    def checkIfCanEnterPosition(self, i: int, tpInTicks:int, minTick:float) -> Position:
         pass
 
     @abstractmethod 

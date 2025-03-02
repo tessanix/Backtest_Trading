@@ -3,20 +3,35 @@ import pandas as pd
 from values_definition import Position
 from strategies.Strategy import Strategy
 
-def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:tuple[int,int], usSession:bool, stopMethod:int, feesPerTrade:float) -> pd.DataFrame:
+def strategyLoop(strategy: Strategy, instrument:str, slInTicks:int, tpInTicks:tuple[int,int], 
+                 usSession:bool, stopMethod:int, feesPerTrade:float, positionSize:int=5, withCrossKijunExit:bool=True) -> pd.DataFrame:
 
     CAPITAL = 50_000.0 # constant
     followingSl = slInTicks
 
-    tickValue = 10 #1.25
-    tickSize = 0.01 #0.25 # 1 tick = variation of price of 0.25 for SP500
-    positionSize = 1 #nbr of contracts
+
+    tickValue, tickSize = 0.0, 0.0
+
+    if instrument == "MES":
+        tickValue, tickSize = 1.25, 0.25
+    elif instrument == "ES":
+        tickValue, tickSize = 12.5, 0.25
+    elif instrument == "MNQ":
+        tickValue, tickSize = 0.5, 0.25
+    elif instrument == "NQ":
+        tickValue, tickSize = 5.0, 0.25
+    elif instrument == "MCL":
+        tickValue, tickSize = 1.0, 0.01
+    elif instrument == "CL":
+        tickValue, tickSize = 10.0, 0.01
+    else: 
+        return None
 
     position = Position.NONE
     entryDate = ""
     entryPrice = 0.0
     tradesData = []
-    # maxBar = len(strategy.df_M5) - 1 
+    # maxBar = len(strategy.df) - 1 
     usSessionHour = 16
     allowed_trading_hours_start = 7 if usSession == False else usSessionHour
     allowed_trading_hours_end = 20
@@ -25,10 +40,10 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:tuple[int,int], us
     # isFirstTradeCandle = False
 
     # with tqdm(total=maxBar) as pbar:
-    for i in strategy.df_M5.index[1:]: 
+    for i in strategy.df.index[1:]: 
 
-        currentPrice = strategy.df_M5.loc[i]["close"]
-        currentDate = strategy.df_M5.loc[i]["datetime"]
+        currentPrice = strategy.df.loc[i]["close"]
+        currentDate = strategy.df.loc[i]["datetime"]
         if currentDate.hour < usSessionHour:
             tpInTicksChosen = tpInTicks[0]
         else:
@@ -37,7 +52,7 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:tuple[int,int], us
         if position == Position.NONE:
             if (allowed_trading_hours_start <= currentDate.hour and currentDate.hour < allowed_trading_hours_end):
 
-                position = strategy.checkIfCanEnterPosition(i, tpInTicksChosen)
+                position = strategy.checkIfCanEnterPosition(i, tpInTicksChosen, tickSize)
                 entryDate = currentDate
                 entryPrice = currentPrice
                 # times_below_breakeven = 0
@@ -45,7 +60,7 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:tuple[int,int], us
                 followingSl = slInTicks
 
         else:
-            # prevPrice = strategy.df_M5.loc[i-1]["close"]
+            # prevPrice = strategy.df.loc[i-1]["close"]
             if position == Position.LONG:
                 sl = entryPrice - followingSl*tickSize
                 tp = entryPrice + tpInTicksChosen*tickSize
@@ -84,8 +99,9 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:tuple[int,int], us
                 # elif times_below_breakeven_treshold>0 and times_below_breakeven>=times_below_breakeven_treshold: # and currentPrice >= entryPrice + tpInTicks*tickSize/2: # tp/2
                 #     followingSl = 0 # => breakeven
                 
-                elif strategy.checkIfCanStopLongPosition(i, stopMethod) or currentDate.hour >= 22:
-                    profit = (currentPrice-entryPrice)*tickValue*positionSize
+                elif (withCrossKijunExit and entryPrice < currentPrice and strategy.checkIfCanStopLongPosition(i, stopMethod)) \
+                    or (currentDate.hour >= 22):
+                    profit = ((currentPrice-entryPrice)/tickSize)*tickValue*positionSize
                     tradesData.append({
                         "entry_date": entryDate, 
                         "exit_date": currentDate, 
@@ -136,8 +152,9 @@ def strategyLoop(strategy: Strategy, slInTicks:int, tpInTicks:tuple[int,int], us
                 # elif times_below_breakeven_treshold>0 and times_below_breakeven>=times_below_breakeven_treshold: #currentPrice <= entryPrice - tpInTicks*tickSize/2: # tp/2
                 #     followingSl = 0 # => breakeven
 
-                elif strategy.checkIfCanStopShortPosition(i, stopMethod) or currentDate.hour >= 22:
-                    profit = (entryPrice-currentPrice)*tickValue*positionSize
+                elif (withCrossKijunExit and entryPrice > currentPrice and strategy.checkIfCanStopShortPosition(i, stopMethod)) \
+                    or (currentDate.hour >= 22):
+                    profit = ((entryPrice-currentPrice)/tickSize)*tickValue*positionSize
                     tradesData.append({
                         "entry_date": entryDate, 
                         "exit_date": currentDate, 
