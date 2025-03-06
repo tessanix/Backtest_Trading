@@ -5,11 +5,13 @@ from values_definition import Position, Trend
 
 class DTP(Strategy):
 
-    def __init__(self, df:pd.DataFrame, timeframes:list[str], useAllEntryPoints:bool, ticksCrossed:int,): # chopValue:float): #, nbr_of_points:int, delta_in_ticks:int):#chopValue:float, methodTenkanAngle:int ):
+    def __init__(self, df:pd.DataFrame, timeframes:list[str], useAllEntryPoints:bool, ticksCrossed:int, tenkanCond:int):#, rsiVal:tuple[float,float]): # chopValue:float): #, nbr_of_points:int, delta_in_ticks:int):#chopValue:float, methodTenkanAngle:int ):
         #self.minTick = 0.25 #0.01  # tick size for SP500 (/ES)
         # self.nbr_of_points = nbr_of_points
         # self.delta_in_ticks = delta_in_ticks
         # self.chopValueToCross = chopValue
+        # self.rsiVal = rsiVal
+        self.tenkanCond=tenkanCond
         self.ticksCrossed = ticksCrossed
         self.methodTenkanAngle = 2
         self.df = df
@@ -139,20 +141,20 @@ class DTP(Strategy):
         else: 
             return Position.NONE
 
-    def checkTenkanAngleBullish(self, i, method):
-        if method == 1:
+    def checkTenkanAngleBullish(self, i):
+        if self.tenkanCond == 1:
             if self.df.loc[i-1]["tenkan"] < self.df.loc[i]["tenkan"]:
                 return True
-        elif method == 2:
+        elif self.tenkanCond == 2:
             if self.df.loc[i-1]["tenkan"] <= self.df.loc[i]["tenkan"]:
                 return True
         return False
     
-    def checkTenkanAngleBearish(self, i, method):
-        if method == 1:
+    def checkTenkanAngleBearish(self, i):
+        if self.tenkanCond == 1:
             if self.df.loc[i-1]["tenkan"] > self.df.loc[i]["tenkan"]:
                 return True
-        elif method == 2:
+        elif self.tenkanCond == 2:
             if self.df.loc[i-1]["tenkan"] >= self.df.loc[i]["tenkan"]:
                 return True
         return False
@@ -187,10 +189,13 @@ class DTP(Strategy):
         if all(trend == Trend.BULLISH for trend in convergence_UTs):
         
             if (self.price_crossed_above(prev_close, close, current_kijun, byHowFar=self.ticksCrossed*minTick) 
+                # and abs(close - self.df.loc[i, "open"])/minTick < 6
                 and close > self.df.loc[i]["tenkan"]
+                # and self.rsiVal[0] < self.df.loc[i]["RSI"]
+
                 # and close > current_kijun + self.ticksAbove*self.minTick 
                 # and self.df.loc[i-1]["kijun"] <= self.df.loc[i]["kijun"]
-                and self.checkTenkanAngleBullish(i, method=self.methodTenkanAngle)
+                and self.checkTenkanAngleBullish(i)
                 #and self.df.loc[i-1]["tenkan"] < self.df.loc[i]["tenkan"]
                 #and self.chop_crossed_below(self.chopValue, i)
             ):
@@ -209,10 +214,13 @@ class DTP(Strategy):
         elif all(trend == Trend.BEARISH for trend in convergence_UTs):
         
             if (self.price_crossed_below(prev_close, close, current_kijun, byHowFar=self.ticksCrossed*minTick) 
+                # and abs(self.df.loc[i, "open"] - close)/minTick < 6
                 and close < self.df.loc[i]["tenkan"]
+                # and self.rsiVal[1] > self.df.loc[i]["RSI"]
+
                 # and close <  current_kijun - self.ticksAbove*self.minTick
                 # and self.df.loc[i-1]["kijun"] >= self.df.loc[i]["kijun"]
-                and self.checkTenkanAngleBearish(i, method=self.methodTenkanAngle)
+                and self.checkTenkanAngleBearish(i)
                 #and self.df.loc[i-1]["tenkan"] > self.df.loc[i]["tenkan"]
             ): 
                 position = Position.SHORT
@@ -256,6 +264,12 @@ class DTP(Strategy):
             open = self.df.loc[i]["open"]
             return (high <= current_tenkan) or (close < open and open <= current_kijun)
         
+        elif method == 5:
+            current_tenkan = self.df.loc[i]["tenkan"]
+            close = self.df.loc[i]["close"]
+            open = self.df.loc[i]["open"]
+            return (close < open and open < current_tenkan) or (close < open and open <= current_kijun)
+        
     def checkIfCanStopShortPosition(self, i: int, method:int) -> bool:
         current_kijun = self.df.loc[i]["kijun"]
 
@@ -279,6 +293,12 @@ class DTP(Strategy):
             close = self.df.loc[i]["close"]
             open = self.df.loc[i]["open"]
             return (low >= current_tenkan) or (close > open and open >= current_kijun)
+        
+        elif method == 5:
+            current_tenkan = self.df.loc[i]["tenkan"]
+            close = self.df.loc[i]["close"]
+            open = self.df.loc[i]["open"]
+            return (close > open and open > current_tenkan) or (close > open and open >= current_kijun)
         
 
     

@@ -6,20 +6,21 @@ from processing_functions import create_df
 from multiprocessing import Pool, set_start_method, Manager
 from processing_functions import save_object
 
+
 def convertir_en_entiers(liste):
     return [[int(element) for element in sous_liste] for sous_liste in liste]
 
 def run_strategy(combination, queue, positionSize, instrument, start_date, end_date):
-    iteration, sl, tp, onlyUSSession, sm, timeframes, tc, ke = combination # windowForLevels nbr_of_points, delta_in_ticks = combination
+    iteration, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, forbHours, slModifiers = combination # windowForLevels nbr_of_points, delta_in_ticks = combination
     df_M5 = create_df(timeFramesUsedInMinutes=timeframes, instrument=instrument, start_date=start_date, end_date=end_date) #, windowForLevels=windowForLevels) #, windowForLevels=windowForLevels) #chopPeriod=chopp)
     df_M5.reset_index(inplace=True)
-    strategy = DTP(df_M5[0:], timeframes, useAllEntryPoints=False, ticksCrossed=tc)
+    strategy = DTP(df_M5[0:], timeframes, useAllEntryPoints=False, ticksCrossed=tc, tenkanCond=tenkanCond)
                    #nbr_of_points=nbr_of_points, delta_in_ticks=delta_in_ticks) #chopValue=chopv)
     print(f'iteration n°{iteration} is running...') #: parameters: sl={sl}, tp={tp}, US_hours_only={onlyUSSession}, sm={sm} started')
     start_time = datetime.now()
-    trades = strategyLoop(strategy, instrument, sl, tp, onlyUSSession, stopMethod=sm, feesPerTrade=1.42, 
-                          positionSize=positionSize, withCrossKijunExit=ke)
-    result = (iteration, [trades, sl, tp, onlyUSSession, sm, timeframes, tc, ke])#chopv, chopp])
+    trades = strategyLoop(strategy, instrument, sl, tp, onlyUSSession, stopMethod=smke, feesPerTrade=1.42, 
+                          positionSize=positionSize, forbiddenHours=forbHours, slModifiers=slModifiers)
+    result = (iteration, [trades, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, slModifiers, forbHours])#chopv, chopp])
     end_time = datetime.now()
     print(f'iteration n°{iteration} finished in {end_time-start_time}')
     queue.put(result)
@@ -44,34 +45,44 @@ if __name__ == '__main__':
         # "delta_in_ticks": [5],
         # "chopPeriod":[14, 28, 48],
         # "chopValueToCross": [61.8],
-        "withCrossKijunExit":[False, True],
-        "ticksCrossed":[0, 1],
-        "stopMethods": [2,3], 
-        "slInTicks": [20],
-        "tpInTicks": [(30,70)],
-        "onlyUSSession": [True, False],
-        "timeFrameUsed": [["1"], ["1", "15"], ["5", "15", "60"], ["5", "60"], ["5", "15"], ["5"]]
-        #"methodTenkanAngle":[2],
+        # "patternVerif": [True,False],
+        # "rsiPeriod":[14, ]
+        # "rsiValues": [(50, 50), (55,45)],
+        # "withCrossKijunExit":[False, True],
+        "slModifiers": [[0.6,0.12], [0.5,0.15],[0.7, 0.2]],
+        "forbiddenHours":[[7,8,11,12], []],
+        "ticksCrossed":[0],
+        "stopMethodsForKijunExitExit": [2,3,4], #stopMethodsForKijunExitExit==0 => no exit method used
+        "slInTicks": [10, 12, 20],
+        "tpInTicks": [(25,70),(25,65)],
+        "onlyUSSession": [False],
+        "timeFrameUsed": [["1"], ["1", "5"], ["1", "5", "15"]],
+        "methodTenkanAngle":[2]
     }
     params_combinations = []
+    comb_to_remove = []
     iteration = 1
     #for windowForLevels in params["windowForLevels"]:
     #    for nbr_of_points in params["nbr_of_points"]:
     #        for delta_in_ticks in params["delta_in_ticks"]:
                 # for chopPeriod in params["chopPeriod"]:
                 #     for chopVal in params["chopValueToCross"]:
-    for sm in params["stopMethods"]:
-        for tc in params["ticksCrossed"]:
-            for ke in params["withCrossKijunExit"]:
-                for sl in params["slInTicks"]:
-                    for tp in params["tpInTicks"]:
-                        for onlyUSSession in params["onlyUSSession"]:
-                            for timeframes in params["timeFrameUsed"]:
-                            #if tp/sl < 1.6: # On ne veut que des trade avec un risk ratio >= à 1
-                                params_combinations.append((iteration, sl, tp, onlyUSSession, sm, timeframes, tc, ke)) #, chopVal, chopPeriod)) # windowForLevels, nbr_of_points, delta_in_ticks))
-                                iteration+=1
+                        #for pv in params["patternVerif"]:
+                # for rsiVal in params["rsiValues"]:
+    for slModifiers in params["slModifiers"]:
+        for forbHours in params["forbiddenHours"]:
+            for tenkanCond in params["methodTenkanAngle"]:
+                for smke in params["stopMethodsForKijunExitExit"]:
+                    for tc in params["ticksCrossed"]:
+                        for sl in params["slInTicks"]:
+                            for tp in params["tpInTicks"]:
+                                for onlyUSSession in params["onlyUSSession"]:
+                                    for timeframes in params["timeFrameUsed"]:
+                                        comb = (iteration, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, forbHours, slModifiers)
+                                        params_combinations.append(comb)#, rsiVal)) #, chopVal, chopPeriod)) # windowForLevels, nbr_of_points, delta_in_ticks))
+                                        iteration+=1
     print(f'number iteration to do: {iteration-1}')   
-
+            
     with Manager() as manager:
         queue = manager.Queue()
 
@@ -93,8 +104,10 @@ if __name__ == '__main__':
         tf = convertir_en_entiers(params['timeFrameUsed'])
         tp = "Variable" if type(params["tpInTicks"][0]) == tuple else "Fixed"
         filename = f"backtest_{instrument}_from[{start_date}]_to[{end_date}]_posSize={positionSize}_timeframe={tf}"\
-            f"_stopMethod={params['stopMethods']}_TP={tp}_tickCrossed={params["ticksCrossed"]}_withCrossKijunExit={params["withCrossKijunExit"]}"\
-            ".pkl"
+            f"_stopMethodsForKijunExitExit={params['stopMethodsForKijunExitExit']}" \
+            f"_forbiddenHours={params["forbiddenHours"]}_slModifiers={params["slModifiers"]}.pkl"
+            #f"_rsiValues={params['rsiValues']}_rsiPeriod={params['_rsiPeriod']}"\
+            #f"_patternVerif={params['patternVerif']}"\
             # f"chopValueToCross={params["chopValueToCross"]}_chopPeriod={params["chopPeriod"]}" \
             #f"_windowForLevels={params['windowForLevels']}_"\
             #f"nbr_of_points={params['nbr_of_points']}_delta_in_ticks={params['delta_in_ticks']}.pkl"

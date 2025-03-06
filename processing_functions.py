@@ -42,8 +42,30 @@ def compute_Ichimoku_on_DataFrame(df: pd.DataFrame):
     return df
 
 
+def compute_rsi(df, period=14):
+    # Calculate the price differences
+    delta = df['close'].diff()
+
+    # Separate gains and losses
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+
+    # Calculate the rolling averages of gains and losses
+    avg_gain = gain.rolling(window=period, min_periods=1).mean()
+    avg_loss = loss.rolling(window=period, min_periods=1).mean()
+
+    # Calculate RS (Relative Strength)
+    rs = avg_gain / avg_loss
+
+    # Calculate RSI using the formula
+    rsi = 100 - (100 / (1 + rs))
+
+    return rsi
+
+
+
 def create_df(timeFramesUsedInMinutes=["1"], instrument="MES", 
-              start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00"): #, chopPeriod:int=14): #, windowForLevels=12):
+              start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00" ):#, rsiPeriod=14): #, chopPeriod:int=14): #, windowForLevels=12):
     root_path = "C:/Users/tessa/MotiveWave Data/"
     start_date = pd.to_datetime(start_date) #data are weird before this data (a problem from data provider???)
     end_date = pd.to_datetime(end_date)
@@ -77,8 +99,9 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="MES",
                 return KeyError
             main_df = main_df[(start_date <= main_df['datetime']) & (main_df['datetime'] <= end_date)]
             main_df = compute_Ichimoku_on_DataFrame(main_df)
+            # main_df['RSI'] = compute_rsi(main_df, period=rsiPeriod)
+
         else:
-            ### M15 ###
             next_timeframe_df = pd.read_csv(
                 filepath_or_buffer=path,
                 names=["datetime", "open", "high", "low","close", "volume"],
@@ -93,8 +116,12 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="MES",
             ### ADD SSA AND SSB DATA FROM SUPERIOR TIMEFRAME ###
             suffixe = "_"+timeFrame
             main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'ssa', 'ssb']], on='datetime', how='left', suffixes = ["", suffixe])
-            main_df["ssa"+suffixe] = main_df["ssa"+suffixe].ffill()
-            main_df["ssb"+suffixe] = main_df["ssa"+suffixe].ffill()
+            main_df[["ssa"+suffixe, "ssb"+suffixe]] = main_df[["ssa"+suffixe, "ssb"+suffixe]].ffill()
+            # if idx == 1 :
+            #     main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'open', 'close']], on='datetime', how='left', suffixes = ["", suffixe])
+                # main_df[["close"+suffixe, "open"+suffixe]] = main_df[["close"+suffixe, "open"+suffixe]].ffill()
+
+
 
 
     # 1. Convertir la colonne datetime en index pour faciliter la resampling des données journalières
@@ -144,11 +171,15 @@ def sort_by_total_pnl(item):
     _, dict_values = item
     return dict_values['Total return net [%]']
 
+def sort_by_total_pnl_with_fees(item):
+    _, dict_values = item
+    return dict_values['Total return brut [%]']
+
 def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
     winrate_dictionnary = {}
 
     for id, trade_data in trades_database.items():
-        df, sl, tp, onlyUSSession, sm, timeframes, tc, kc = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
+        df, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, slModifiers = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
 
         loser_entry_price = df.loc[df['profit_from_start(%)']<0, 'entry_price']
         loser_exit_price = df.loc[df['profit_from_start(%)']<0, 'exit_price']
@@ -189,11 +220,14 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
             #'TP [Ticks]': (tp[0], tp[1]),
             "Q2 duration (médiane)": quantiles_duration.loc[0.50], 
             "Q3 duration (75%)": quantiles_duration.loc[0.75],
-            "stop_method": sm,
+            "stopMethodsForKijunExitExit": smke,
             'US_session_only' : onlyUSSession,
             'timeframes': timeframes,
             'ticksCrossed': tc,
-            'kijuncross':kc,
+            'tenkanCond':tenkanCond,
+            'slModifiers':slModifiers,
+            # 'rsiVal': rsiVal
+            # "patternVerif":pv
             # 'chopValue': chopVal, 
             # 'mta':mta,
             # 'chopPeriod':chopPeriod,
@@ -207,6 +241,9 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
         winrate_dictionnary = dict(sorted(winrate_dictionnary.items(), key=sort_by_winrate))
     elif sort_option == 2:
         winrate_dictionnary = dict(sorted(winrate_dictionnary.items(), key=sort_by_total_pnl))
+    elif sort_option == 3:
+        winrate_dictionnary = dict(sorted(winrate_dictionnary.items(), key=sort_by_total_pnl_with_fees))
+        
         
     return winrate_dictionnary
 
@@ -285,10 +322,9 @@ def plot_backtested_return_curve(
     plt.show()
 
 
-def plot_bars_of_profit_for_every_weeks(name):
+def plot_bars_of_profit_for_every_weeks(name, selected_Id):
     pathOfData = "trade_datas/"+name
     trades_database = load_object(pathOfData)
-    selected_Id = 10
     df_temp =  trades_database[selected_Id][0]
     df_temp['exit_week'] = df_temp['exit_date'].dt.to_period('W')
     result = df_temp.groupby(['exit_week']).agg({'profit_from_start(%)': ['sum']})
@@ -317,10 +353,9 @@ def plot_bars_of_profit_for_every_weeks(name):
     plt.show()
 
 
-def get_winrate_by_short_and_long_position(name):
+def get_winrate_by_short_and_long_position(name, selected_Id):
     pathOfData = "trade_datas/"+name
     trades_database = load_object(pathOfData)
-    selected_Id = 10
     df_temp =  trades_database[selected_Id][0]
     nbr_win_short = df_temp[(df_temp['profit_from_start(%)']>0) & (df_temp['position']==Position.SHORT)]['position'].count()
     nbr_lose_short = df_temp[(df_temp['profit_from_start(%)']<0) & (df_temp['position']==Position.SHORT)]['position'].count()
