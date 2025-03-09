@@ -5,17 +5,11 @@ from values_definition import Position, Trend
 
 class DTP(Strategy):
 
-    def __init__(self, df:pd.DataFrame, timeframes:list[str], useAllEntryPoints:bool, ticksCrossed:int, tenkanCond:int):#, rsiVal:tuple[float,float]): # chopValue:float): #, nbr_of_points:int, delta_in_ticks:int):#chopValue:float, methodTenkanAngle:int ):
-        #self.minTick = 0.25 #0.01  # tick size for SP500 (/ES)
-        # self.nbr_of_points = nbr_of_points
-        # self.delta_in_ticks = delta_in_ticks
-        # self.chopValueToCross = chopValue
-        # self.rsiVal = rsiVal
+    def __init__(self, df:pd.DataFrame, timeframes:list[str], useAllEntryPoints:bool, ticksCrossed:int, tenkanCond:bool):
+
         self.tenkanCond=tenkanCond
         self.ticksCrossed = ticksCrossed
-        self.methodTenkanAngle = 2
         self.df = df
-        # self.use3UT = use3UT
         self.timeframes = timeframes
         self.useAllEntryPoints = useAllEntryPoints
  
@@ -119,8 +113,22 @@ class DTP(Strategy):
         
         return closest_lower, closest_higher
 
-    def verify_distance_from_pivot_level(self, i, position, close, tpInTicks, minTick) -> Position:
+
+    def get_largest_ssb_flat(self, i, lookback=720):
+        if i-lookback < 0:
+            return 0
+        ssb_levels_count = self.df.loc[i-lookback: i, "ssb_"+self.timeframes[1]].value_counts()
+        return ssb_levels_count.idxmax()
+
+    def verify_distance_from_pivot_level(self, i, position, close, tpInTicks, minTick):#, ssb_higher_timeframe) -> Position:
         support, resistance = self.get_2_nearest_pivot_levels(i, close)
+        # ssb_higher_timeframe = self.get_largest_ssb_flat(i, lookback=720)
+        # if ssb_higher_timeframe > 0:
+        # if ssb_higher_timeframe > support and ssb_higher_timeframe < close:
+        #     support = ssb_higher_timeframe
+        # elif ssb_higher_timeframe < resistance and ssb_higher_timeframe > close:
+        #     resistance = ssb_higher_timeframe
+
         # pivot_level = self.df.loc[i]["PP"]
         if position == Position.LONG:
             # if close < pivot_level:
@@ -166,7 +174,7 @@ class DTP(Strategy):
         current_kijun = self.df.loc[i]["kijun"]
         current_ssa = self.df.loc[i]["ssa"]
         current_ssb = self.df.loc[i]["ssb"]
-
+        # current_ssb_of_other_tf = 0
         close = self.df.loc[i]["close"]
         prev_close = self.df.loc[i-1]["close"]
 
@@ -189,6 +197,7 @@ class DTP(Strategy):
         if all(trend == Trend.BULLISH for trend in convergence_UTs):
         
             if (self.price_crossed_above(prev_close, close, current_kijun, byHowFar=self.ticksCrossed*minTick) 
+                # and self.price_crossed_above(prev_close, close, self.df.loc[i]["tenkan"], byHowFar=self.ticksCrossed*minTick) 
                 # and abs(close - self.df.loc[i, "open"])/minTick < 6
                 and close > self.df.loc[i]["tenkan"]
                 # and self.rsiVal[0] < self.df.loc[i]["RSI"]
@@ -214,6 +223,7 @@ class DTP(Strategy):
         elif all(trend == Trend.BEARISH for trend in convergence_UTs):
         
             if (self.price_crossed_below(prev_close, close, current_kijun, byHowFar=self.ticksCrossed*minTick) 
+                # and self.price_crossed_below(prev_close, close, self.df.loc[i]["tenkan"], byHowFar=self.ticksCrossed*minTick) 
                 # and abs(self.df.loc[i, "open"] - close)/minTick < 6
                 and close < self.df.loc[i]["tenkan"]
                 # and self.rsiVal[1] > self.df.loc[i]["RSI"]
@@ -232,7 +242,7 @@ class DTP(Strategy):
             #         and self.df.loc[i-1]["tenkan"] >= current_tenkan
             #     ):
             #         position = Position.SHORT
-        position = self.verify_distance_from_pivot_level(i, position, close, tpInTicks, minTick)
+        position = self.verify_distance_from_pivot_level(i, position, close, tpInTicks, minTick) #, current_ssb_of_other_tf)
 
         # if self.checkChopIndexAllowingTrade(i) == False:
         #     position = Position.NONE

@@ -63,6 +63,33 @@ def compute_rsi(df, period=14):
     return rsi
 
 
+def create_not_processed_df(timeFramesUsedInMinutes=["1"], instrument="MES"):
+    root_path = "C:/Users/tessa/MotiveWave Data/"
+    main_df = pd.DataFrame()
+
+    for idx, timeFrame in enumerate(timeFramesUsedInMinutes):
+        path =""
+        if instrument == "MES":
+            path = root_path+"@MES.CME.TOP_STEP_"+timeFrame+".csv"
+        elif instrument == "ES":
+            path = root_path+"@ES.CME.TOP_STEP_"+timeFrame+".csv"
+        elif instrument == "MNQ":
+            path = root_path+"@MNQ.CME.TOP_STEP_"+timeFrame+".csv"
+        elif instrument == "NQ":
+            path = root_path+"@NQ.CME.TOP_STEP_"+timeFrame+".csv"
+        elif instrument == "MCL":
+            path = root_path+"@MCL.NYMEX.TOP_STEP_"+timeFrame+".csv"
+        elif instrument == "CL":
+            path = root_path+"@CL.NYMEX.TOP_STEP_"+timeFrame+".csv"
+        
+        main_df = pd.read_csv(
+            filepath_or_buffer=path,
+            names=["datetime", "open", "high", "low","close", "volume"],
+            header=None,
+            delimiter=","
+        )
+        main_df['datetime'] = pd.to_datetime(main_df['datetime'], format='%d/%m/%Y %H:%M:%S')
+    return main_df
 
 def create_df(timeFramesUsedInMinutes=["1"], instrument="MES", 
               start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00" ):#, rsiPeriod=14): #, chopPeriod:int=14): #, windowForLevels=12):
@@ -151,6 +178,9 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="MES",
     main_df.dropna(inplace=True)
     main_df.reset_index(inplace=True)
 
+    main_df["ATR"] = calculate_atr(main_df, period=14)
+    main_df.dropna(inplace=True)
+    main_df.reset_index(inplace=True)
     # main_df['support']    = np.where(main_df.low == main_df.low.rolling(windowForLevels, center=True).min(), main_df.low, 0) #C'est tricher car on utilise center=True mais on l'utilise quand meme pour un gain de temps de backtest
     # main_df['resistance'] = np.where(main_df.high == main_df.high.rolling(windowForLevels, center=True).max(), main_df.high, 0)
     
@@ -179,7 +209,8 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
     winrate_dictionnary = {}
 
     for id, trade_data in trades_database.items():
-        df, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, slModifiers = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
+        #df, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, slModifiers, fbh, atrRatio = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
+        df, onlyUSSession, smke, timeframes, tc, slModifiers, forbHours, atrRatio = trade_data
 
         loser_entry_price = df.loc[df['profit_from_start(%)']<0, 'entry_price']
         loser_exit_price = df.loc[df['profit_from_start(%)']<0, 'exit_price']
@@ -215,17 +246,21 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
             "Avg. loss net [%]": round(avg_loss_including_fees_from_start,3),
             'Risk ratio': round(avg_real_tp_executed/avg_real_sl_executed, 2), 
             'Nbr Wins/Loss/Breakeven' : (wins, loss, breakevens),
+            "Avg. executed TP [Ticks]": round(avg_real_tp_executed, 1),
             "Avg. executed SL [Ticks]": round(avg_real_sl_executed, 1),
-            'SL/TP1/TP2 [Ticks]': (sl, tp[0], tp[1]),
+
+            # 'SL/TP1/TP2 [Ticks]': (sl, tp[0], tp[1]),
             #'TP [Ticks]': (tp[0], tp[1]),
             "Q2 duration (médiane)": quantiles_duration.loc[0.50], 
             "Q3 duration (75%)": quantiles_duration.loc[0.75],
+            'timeframes': timeframes,
+            # 'tenkanCond':tenkanCond,
+            'slModifiers':slModifiers,
+            "forbbiden Hours":forbHours,
+            "atrRatio":atrRatio,
             "stopMethodsForKijunExitExit": smke,
             'US_session_only' : onlyUSSession,
-            'timeframes': timeframes,
             'ticksCrossed': tc,
-            'tenkanCond':tenkanCond,
-            'slModifiers':slModifiers,
             # 'rsiVal': rsiVal
             # "patternVerif":pv
             # 'chopValue': chopVal, 
@@ -362,3 +397,28 @@ def get_winrate_by_short_and_long_position(name, selected_Id):
     nbr_win_long = df_temp[(df_temp['profit_from_start(%)']>0) & (df_temp['position']==Position.LONG)]['position'].count()
     nbr_lose_long = df_temp[(df_temp['profit_from_start(%)']<0) & (df_temp['position']==Position.LONG)]['position'].count()
     print(f'winrate short: {nbr_win_short/(nbr_win_short+nbr_lose_short)}, winrate long: {nbr_win_long/(nbr_win_long+nbr_lose_long)}')
+
+
+def calculate_atr(df, period=14):
+    """
+    Calculates the Average True Range (ATR) for a given OHLC dataframe.
+
+    Args:
+    - df (pd.DataFrame): The dataframe with columns ['Open', 'High', 'Low', 'Close'].
+    - period (int): The period over which to calculate the ATR (default is 14).
+
+    Returns:
+    - pd.Series: A Series with the ATR values.
+    """
+    # Calculate True Range (TR)
+    df['Previous Close'] = df['close'].shift(1)  # Previous day's close
+    df['TR'] = pd.DataFrame({
+        'High-Low': df['high'] - df['low'],
+        'High-Previous Close': abs(df['high'] - df['Previous Close']),
+        'Low-Previous Close': abs(df['low'] - df['Previous Close'])
+    }).max(axis=1)
+
+    # Calculate ATR as the rolling mean of True Range
+    df['ATR'] = df['TR'].rolling(window=period).mean()
+
+    return df['ATR']
