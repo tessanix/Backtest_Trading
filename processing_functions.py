@@ -84,46 +84,56 @@ def create_not_processed_df(timeFramesUsedInMinutes=["1"], instrument="MES"):
         
         main_df = pd.read_csv(
             filepath_or_buffer=path,
-            names=["datetime", "open", "high", "low","close", "volume"],
+            names=["datetime", "open", "high", "low","close", "volume"],#"high_before_low"],
             header=None,
-            delimiter=","
+            delimiter=",",
+            dtype={'high_before_low': 'boolean'}
         )
-        main_df['datetime'] = pd.to_datetime(main_df['datetime'], format='%d/%m/%Y %H:%M:%S')
+        main_df['datetime'] = pd.to_datetime(main_df['datetime'])
     return main_df
 
-def create_df(timeFramesUsedInMinutes=["1"], instrument="MES", 
+def create_df(timeFramesUsedInMinutes=["1"], instrument="ES", 
               start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00" ):#, rsiPeriod=14): #, chopPeriod:int=14): #, windowForLevels=12):
-    root_path = "C:/Users/tessa/MotiveWave Data/"
+    #root_path = "C:/Users/tessa/MotiveWave Data/"
+    root_path = "C:/Users/tessa/Codes/Backtest_Trading/market_data/"
+
     start_date = pd.to_datetime(start_date) #data are weird before this data (a problem from data provider???)
     end_date = pd.to_datetime(end_date)
     main_df = pd.DataFrame()
 
     for idx, timeFrame in enumerate(timeFramesUsedInMinutes):
         path =""
-        if instrument == "MES":
-            path = root_path+"@MES.CME.TOP_STEP_"+timeFrame+".csv"
-        elif instrument == "ES":
-            path = root_path+"@ES.CME.TOP_STEP_"+timeFrame+".csv"
-        elif instrument == "MNQ":
-            path = root_path+"@MNQ.CME.TOP_STEP_"+timeFrame+".csv"
-        elif instrument == "NQ":
-            path = root_path+"@NQ.CME.TOP_STEP_"+timeFrame+".csv"
-        elif instrument == "MCL":
-            path = root_path+"@MCL.NYMEX.TOP_STEP_"+timeFrame+".csv"
-        elif instrument == "CL":
-            path = root_path+"@CL.NYMEX.TOP_STEP_"+timeFrame+".csv"
+        # if instrument == "MES":
+        #     path = root_path+"@MES.CME.TOP_STEP_"+timeFrame+".csv"
+        if instrument == "ES":
+            #path = root_path+"@ES.CME.TOP_STEP_"+timeFrame+".csv"
+            path = root_path+f"ES_{timeFrame}m_2-10-2020-12-00PM_3-10-2025-12-00PM_preprocessed.csv"
+        # elif instrument == "MNQ":
+        #     path = root_path+"@MNQ.CME.TOP_STEP_"+timeFrame+".csv"
+        # elif instrument == "NQ":
+        #     path = root_path+"@NQ.CME.TOP_STEP_"+timeFrame+".csv"
+        # elif instrument == "MCL":
+        #     path = root_path+"@MCL.NYMEX.TOP_STEP_"+timeFrame+".csv"
+        # elif instrument == "CL":
+        #     path = root_path+"@CL.NYMEX.TOP_STEP_"+timeFrame+".csv"
+        else:
+            print("Intrument "+instrument+" not found")
+            return
+        
         
         if idx == 0:
             main_df = pd.read_csv(
                 filepath_or_buffer=path,
-                names=["datetime", "open", "high", "low","close", "volume"],
-                header=None,
-                delimiter=","
+                usecols=["datetime", "open", "high", "low", "close"],
+                #names=["datetime", "open", "high", "low","close", "volume", "high_before_low"],
+                #header=None,
+                delimiter=";",
+                #dtype={'high_before_low': 'boolean'}
             )
-            main_df['datetime'] = pd.to_datetime(main_df['datetime'], format='%d/%m/%Y %H:%M:%S')
+            main_df['datetime'] = pd.to_datetime(main_df['datetime'], format='%Y-%m-%d %H:%M:%S') #format='%d/%m/%Y %H:%M:%S')
             if start_date < main_df.iloc[0]['datetime'] or main_df.iloc[-1]['datetime'] < end_date:
                 print("AAAAAAAAAAAAA error")
-                return KeyError
+                return 
             main_df = main_df[(start_date <= main_df['datetime']) & (main_df['datetime'] <= end_date)]
             main_df = compute_Ichimoku_on_DataFrame(main_df)
             # main_df['RSI'] = compute_rsi(main_df, period=rsiPeriod)
@@ -137,7 +147,7 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="MES",
             )
             next_timeframe_df['datetime'] = pd.to_datetime(next_timeframe_df['datetime'], format='%d/%m/%Y %H:%M:%S')
             if start_date < next_timeframe_df.iloc[0]['datetime'] or next_timeframe_df.iloc[-1]['datetime'] < end_date:
-                return KeyError
+                return
             next_timeframe_df = next_timeframe_df[(start_date <= next_timeframe_df['datetime'] ) & (next_timeframe_df['datetime'] <= end_date)]
             next_timeframe_df = compute_Ichimoku_on_DataFrame(next_timeframe_df)
             ### ADD SSA AND SSB DATA FROM SUPERIOR TIMEFRAME ###
@@ -178,9 +188,9 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="MES",
     main_df.dropna(inplace=True)
     main_df.reset_index(inplace=True)
 
-    main_df["ATR"] = calculate_atr(main_df, period=14)
-    main_df.dropna(inplace=True)
-    main_df.reset_index(inplace=True)
+    # main_df["ATR"] = calculate_atr(main_df, period=14)
+    # main_df.dropna(inplace=True)
+    # main_df.reset_index(inplace=True)
     # main_df['support']    = np.where(main_df.low == main_df.low.rolling(windowForLevels, center=True).min(), main_df.low, 0) #C'est tricher car on utilise center=True mais on l'utilise quand meme pour un gain de temps de backtest
     # main_df['resistance'] = np.where(main_df.high == main_df.high.rolling(windowForLevels, center=True).max(), main_df.high, 0)
     
@@ -205,12 +215,16 @@ def sort_by_total_pnl_with_fees(item):
     _, dict_values = item
     return dict_values['Total return brut [%]']
 
-def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
+def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25, 
+    start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00"):
+
     winrate_dictionnary = {}
 
     for id, trade_data in trades_database.items():
         #df, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, slModifiers, fbh, atrRatio = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
-        df, onlyUSSession, smke, timeframes, tc, slModifiers, forbHours, atrRatio = trade_data
+        df, onlyUSSession, smke, timeframes, tc, slModifiers, forbHours, tenkanAngle, slInTicks, tpInTicks = trade_data
+
+        df = df[(start_date <= df["entry_date"] ) & (df["entry_date"] <= end_date)]
 
         loser_entry_price = df.loc[df['profit_from_start(%)']<0, 'entry_price']
         loser_exit_price = df.loc[df['profit_from_start(%)']<0, 'exit_price']
@@ -249,15 +263,15 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
             "Avg. executed TP [Ticks]": round(avg_real_tp_executed, 1),
             "Avg. executed SL [Ticks]": round(avg_real_sl_executed, 1),
 
-            # 'SL/TP1/TP2 [Ticks]': (sl, tp[0], tp[1]),
-            #'TP [Ticks]': (tp[0], tp[1]),
+            '[SL1, TP1] / [SL2, TP2] [Ticks]': (slInTicks[0],tpInTicks[0], slInTicks[1], tpInTicks[1]),
+            # 'TP [Ticks]': (tp[0], tp[1]),
             "Q2 duration (médiane)": quantiles_duration.loc[0.50], 
             "Q3 duration (75%)": quantiles_duration.loc[0.75],
             'timeframes': timeframes,
-            # 'tenkanCond':tenkanCond,
+            'tenkanCond':tenkanAngle,
             'slModifiers':slModifiers,
             "forbbiden Hours":forbHours,
-            "atrRatio":atrRatio,
+            # "atrRatio":atrRatio,
             "stopMethodsForKijunExitExit": smke,
             'US_session_only' : onlyUSSession,
             'ticksCrossed': tc,
@@ -278,13 +292,12 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25):
         winrate_dictionnary = dict(sorted(winrate_dictionnary.items(), key=sort_by_total_pnl))
     elif sort_option == 3:
         winrate_dictionnary = dict(sorted(winrate_dictionnary.items(), key=sort_by_total_pnl_with_fees))
-        
-        
+
     return winrate_dictionnary
 
-def return_trade_datas_dataframe(trade_datas_name, sort_option=2):
+def return_trade_datas_dataframe(trade_datas_name, sort_option=2, start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00"):
     trades_database = load_object('trade_datas/'+trade_datas_name)
-    winrate_dictionnary = create_winrate_dictionnary(trades_database, sort_option=sort_option)
+    winrate_dictionnary = create_winrate_dictionnary(trades_database, sort_option=sort_option, start_date=start_date, end_date=end_date)
     return pd.DataFrame.from_dict(winrate_dictionnary, orient='index')
 
 def describe_daily_and_weekly_trade_datas(trade_datas_name, selected_Id=6):

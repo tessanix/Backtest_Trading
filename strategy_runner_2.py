@@ -1,13 +1,10 @@
 import pandas as pd
 from values_definition import Position, Result
 from strategies.Strategy import Strategy
-from financial_functions import ( profit_for_long_stop_condition_hit, 
-                                profit_for_short_stop_condition_hit, 
-                                profit_for_sl_hit, 
-                                profit_for_tp_hit )
+from positionManager import PositionManager
 
 def strategyLoop(strategy: Strategy, instrument:str, usSession:bool, stopMethod:int, feesPerTrade:float, positionSize:int=1,
-                forbiddenHours:list=[], slModifiers:list[list]=[[0.5, 0.15]], atrRatio:list=[1.5, 1.2]):
+                forbiddenHours:list=[], tpInTicksInitial:list=[25,70], slInTicksInitial:int=[15,40], slModifiers:list[list]=[[0.5, 0.15]]): #atrRatio:list=[1.5, 1.2]):
     
     CAPITAL = 50_000.0 # constant
     withCrossKijunExit = False if stopMethod == 0 else True
@@ -47,117 +44,68 @@ def strategyLoop(strategy: Strategy, instrument:str, usSession:bool, stopMethod:
         if position == Position.NONE:
             if (allowed_trading_hours_start <= currentDate.hour and currentDate.hour < allowed_trading_hours_end and currentDate.hour not in forbiddenHours):
 
-                tpInTicks          = strategy.df.loc[i, 'ATR']*atrRatio[0]/tickSize
-                followingSlinTicks = strategy.df.loc[i, 'ATR']*atrRatio[1]/tickSize
+                followingSlinTicks = slInTicksInitial[0] if currentDate.hour < usSessionHour else slInTicksInitial[1]#strategy.df.loc[i, 'ATR']*atrRatio[1]/tickSize
+                tpInTicks          = tpInTicksInitial[0] if currentDate.hour < usSessionHour else tpInTicksInitial[1]  #strategy.df.loc[i, 'ATR']*atrRatio[0]/tickSize
+                
                 position           = strategy.checkIfCanEnterPosition(i, tpInTicks, tickSize)
                 entryDate          = currentDate
-                entryPrice         = currentClose #currentPrice
-                isFirstTradeCandle = True
-                trade_is_done      = False
+                entryPrice         = currentClose
+
+                if position != Position.NONE:
+                    tp = entryPrice + tpInTicks*tickSize if position == Position.LONG else entryPrice - tpInTicks*tickSize
+                    sl = entryPrice - followingSlinTicks*tickSize if position == Position.LONG else entryPrice + followingSlinTicks*tickSize
+                    posManager = PositionManager(followingSlinTicks, tpInTicks, tickValue, tickSize, 
+                                                 positionSize, entryPrice, sl, tp, slModifiers, trade_is_done=False)
         else:
             ################################################### LONG ###################################################
             if position == Position.LONG:
 
-                tp = entryPrice + tpInTicks*tickSize
-                if isFirstTradeCandle:
-                    sl = entryPrice - followingSlinTicks*tickSize 
-                
-                if len(slModifiers)>0 and (currentHigh-entryPrice)/tickSize>slModifiers[0][0]*tpInTicks:
-                    followingSlinTicks = tpInTicks*slModifiers[0][1]
-                    sl = entryPrice+followingSlinTicks*tickSize      
-    
-                if len(slModifiers)>1 and (currentHigh-entryPrice)/tickSize>slModifiers[1][0]*tpInTicks:
-                    followingSlinTicks = tpInTicks*slModifiers[1][1]
-                    sl = entryPrice+followingSlinTicks*tickSize    
-
                 if high_before_low:
-                    if currentHigh >= tp:
-                        profit = profit_for_tp_hit(tpInTicks, tickValue, positionSize)
-                        exit_price = tp
-                        trade_is_done = True
-                    
-                    elif currentLow <= sl:
-                        result = Result.WIN  if entryPrice < sl else Result.LOSS
-                        profit = profit_for_sl_hit(followingSlinTicks, tickValue, positionSize, result)
-                        exit_price = sl
-                        trade_is_done = True
+                    posManager.moveStopLossIfLevelHitDuringLongPosition(currentHigh=currentHigh)
+                    posManager.checkTargetProfitHitDuringLongPosition(currentHigh=currentHigh)
+                    posManager.checkStopLossHitDuringLongPosition(currentLow=currentLow)
                 else:
-                    if currentLow <= sl:
-                        result = Result.WIN  if entryPrice < sl else Result.LOSS
-                        profit = profit_for_sl_hit(followingSlinTicks, tickValue, positionSize, result)
-                        exit_price = sl
-                        trade_is_done = True
+                    posManager.checkStopLossHitDuringLongPosition(currentLow=currentLow)
+                    posManager.moveStopLossIfLevelHitDuringLongPosition(currentHigh=currentHigh)
+                    posManager.checkTargetProfitHitDuringLongPosition(currentHigh=currentHigh)
 
-                    elif currentHigh >= tp:
-                        profit = profit_for_tp_hit(tpInTicks, tickValue, positionSize)
-                        exit_price = tp
-                        trade_is_done = True
-
-                if not trade_is_done and \
+                if not posManager.trade_is_done and \
                     ((withCrossKijunExit and entryPrice < currentClose and strategy.checkIfCanStopLongPosition(i, stopMethod)) \
                     or (currentDate.hour >= 22)):
-                    profit = profit_for_long_stop_condition_hit(currentClose, entryPrice, tickSize, tickValue, positionSize)
-                    exit_price = entryPrice + (currentClose-entryPrice)
-                    trade_is_done = True
+                    posManager.profit = posManager.profit_for_long_stop_condition_hit(currentClose)
+                    posManager.exit_price = currentClose
+                    posManager.trade_is_done = True
 
             ################################################### SHORT ###################################################
             elif position == Position.SHORT:
 
-                tp = entryPrice - tpInTicks*tickSize
-                if isFirstTradeCandle:
-                    sl = entryPrice + followingSlinTicks*tickSize
-
-                if len(slModifiers)>0 and (entryPrice-currentLow)/tickSize>slModifiers[0][0]*tpInTicks:
-                    followingSlinTicks = tpInTicks*slModifiers[0][1]
-                    sl = entryPrice-followingSlinTicks*tickSize       
-
-                if len(slModifiers)>1 and (entryPrice-currentLow)/tickSize>slModifiers[1][0]*tpInTicks:
-                    followingSlinTicks = tpInTicks*slModifiers[1][1]
-                    sl = entryPrice-followingSlinTicks*tickSize        
-
                 if high_before_low:
-                    if currentHigh >= sl:
-                        result = Result.WIN  if entryPrice > sl else Result.LOSS
-                        profit = profit_for_sl_hit(followingSlinTicks, tickValue, positionSize, result)
-                        exit_price = sl
-                        trade_is_done = True
-
-                    elif currentLow <= tp:
-                        profit = profit_for_tp_hit(tpInTicks, tickValue, positionSize)
-                        exit_price = tp
-                        trade_is_done = True
-
+                    posManager.checkStopLossHitDuringShortPosition(currentHigh=currentHigh)
+                    posManager.moveStopLossIfLevelHitDuringShortPosition(currentLow=currentLow)
+                    posManager.checkTargetProfitHitDuringShortPosition(currentLow=currentLow)
                 else:
-                    if currentLow <= tp:
-                        profit = profit_for_tp_hit(tpInTicks, tickValue, positionSize)
-                        exit_price = tp
-                        trade_is_done = True
+                    posManager.moveStopLossIfLevelHitDuringShortPosition(currentLow=currentLow)
+                    posManager.checkTargetProfitHitDuringShortPosition(currentLow=currentLow)
+                    posManager.checkStopLossHitDuringShortPosition(currentHigh=currentHigh)
 
-                    elif currentHigh >= sl:
-                        result = Result.WIN  if entryPrice > sl else Result.LOSS
-                        profit = profit_for_sl_hit(followingSlinTicks, tickValue, positionSize, result)
-                        exit_price = sl
-                        trade_is_done = True
-
-                if not trade_is_done and \
+                if not posManager.trade_is_done and \
                     ((withCrossKijunExit and entryPrice > currentClose and strategy.checkIfCanStopLongPosition(i, stopMethod)) \
                     or (currentDate.hour >= 22)):
-                    profit = profit_for_short_stop_condition_hit(currentClose, entryPrice, tickSize, tickValue, positionSize)
-                    exit_price = entryPrice - (entryPrice-currentClose)
-                    trade_is_done = True
+                    posManager.profit = posManager.profit_for_short_stop_condition_hit(currentClose)
+                    posManager.exit_price = currentClose
+                    posManager.trade_is_done = True
 
-            isFirstTradeCandle = False
-
-            if trade_is_done:
+            if posManager.trade_is_done:
                 tradesData.append({
                     "entry_date": entryDate, 
                     "exit_date": currentDate, 
-                    "entry_price": entryPrice, 
-                    "exit_price": exit_price,
+                    "entry_price": posManager.entryPrice, 
+                    "exit_price": posManager.exit_price,
                     "position" : position,
-                    "profit_including_fees_from_start(%)": 100*(profit-feesPerTrade)/CAPITAL,
-                    "profit_from_start(%)":100*profit/CAPITAL,
+                    "profit_including_fees_from_start(%)": 100*(posManager.profit-feesPerTrade)/CAPITAL,
+                    "profit_from_start(%)":100*posManager.profit/CAPITAL,
                 }) 
+                del posManager
                 position = Position.NONE   
 
     return pd.DataFrame(tradesData)
