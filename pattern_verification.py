@@ -1,17 +1,14 @@
 from values_definition import Trend
 
 def isUpCandle(df, idx):
-    if df.loc[idx,"close"] > df.loc[idx,"open"]:
-        return True
-    return False
+    return True if df.loc[idx,"close"] > df.loc[idx,"open"] else False
+
 
 def isDownCandle(df, idx):
-    if df.loc[idx,"close"] < df.loc[idx,"open"]:
-        return True
-    return False
+    return True if df.loc[idx,"close"] < df.loc[idx,"open"] else False
+        
 
-
-def verify_stop_by_engulfing_pattern(df, last_m15_candle_idx, actual_position, minTick):
+def verify_engulfing_pattern(df, last_m15_candle_idx, actual_position, minTick):
     if actual_position == Trend.BULLISH: 
         # We want to identify a bearich engulfing here : 
         if (isUpCandle(df, last_m15_candle_idx) # derniere bougie baissière
@@ -29,7 +26,7 @@ def verify_stop_by_engulfing_pattern(df, last_m15_candle_idx, actual_position, m
     return False # pattern non trouvé !
 
 
-def verify_stop_by_3_loss_momentum(df, last_m15_candle_idx, actual_position):
+def verify_3_loss_momentum(df, last_m15_candle_idx, actual_position):
     last1_m15_candle_size = abs(df.loc[last_m15_candle_idx-1, "close"] - df.loc[last_m15_candle_idx-1, "open"])
     last2_m15_candle_size = abs(df.loc[last_m15_candle_idx-2, "close"] - df.loc[last_m15_candle_idx-2, "open"])
     last3_m15_candle_size = abs(df.loc[last_m15_candle_idx-3, "close"] - df.loc[last_m15_candle_idx-3, "open"])
@@ -45,5 +42,23 @@ def verify_stop_by_3_loss_momentum(df, last_m15_candle_idx, actual_position):
             if not isDownCandle(df, last_m15_candle_idx-i):
                 return False
         if last1_m15_candle_size < last2_m15_candle_size and last2_m15_candle_size < last3_m15_candle_size and isUpCandle(df, last_m15_candle_idx):
+            return True
+    return False
+
+def verify_bull_reversal_doji(close, open, low, x=3.5):
+    if x == 0: return False
+    bodyCandleSize = close - open
+    if bodyCandleSize >= 0: # candle body is green or flat
+        lowWickCandleSize = open - low
+        if lowWickCandleSize >= bodyCandleSize*x: # wick is at leats x time greater than body size
+            return True
+    return False
+
+def verify_bear_reversal_doji(close, open, high, x=3.5):
+    if x == 0: return False
+    bodyCandleSize = open - close
+    if bodyCandleSize >= 0: # candle body is red or flat
+        highWickCandleSize = high - open
+        if highWickCandleSize >= bodyCandleSize*x: # wick is at leats x time greater than body size
             return True
     return False

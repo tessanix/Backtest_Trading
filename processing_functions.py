@@ -92,6 +92,19 @@ def create_not_processed_df(timeFramesUsedInMinutes=["1"], instrument="MES"):
         main_df['datetime'] = pd.to_datetime(main_df['datetime'])
     return main_df
 
+def create_us_calendar_df(start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00", contains=["CPI", "Fed"]):
+    df = pd.read_csv(
+        filepath_or_buffer="market_data/us_calendar_high_impact.csv",
+        delimiter=",",
+    )
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    df = df[( pd.to_datetime(start_date) <= df['datetime']) & (df['datetime'] <=  pd.to_datetime(end_date))]
+    # Filtrer les lignes qui contiennent au moins un mot-clé de la liste
+    mask = df['event'].str.contains('|'.join(contains), case=False, na=False)
+    df = df[mask]
+    df.reset_index(inplace=True)
+    return df
+
 def create_df(timeFramesUsedInMinutes=["1"], instrument="ES", 
               start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00" ):#, rsiPeriod=14): #, chopPeriod:int=14): #, windowForLevels=12):
     #root_path = "C:/Users/tessa/MotiveWave Data/"
@@ -222,7 +235,7 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
 
     for id, trade_data in trades_database.items():
         #df, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, slModifiers, fbh, atrRatio = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
-        df, onlyUSSession, smke, timeframes, tc, slModifiers, forbHours, tenkanAngle, slInTicks, tpInTicks = trade_data
+        df, onlyUSSession, smke, timeframes, tc, slModifiers, forbHours, tenkanAngle, slInTicks, tpInTicks, calendar_event = trade_data
 
         df = df[(start_date <= df["entry_date"] ) & (df["entry_date"] <= end_date)]
 
@@ -271,7 +284,7 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
             'tenkanCond':tenkanAngle,
             'slModifiers':slModifiers,
             "forbbiden Hours":forbHours,
-            # "atrRatio":atrRatio,
+            "calendar_event":calendar_event,
             "stopMethodsForKijunExitExit": smke,
             'US_session_only' : onlyUSSession,
             'ticksCrossed': tc,

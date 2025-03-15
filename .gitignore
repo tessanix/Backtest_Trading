@@ -1,3 +1,6 @@
 trade_datas/oldge/
 **/__pycache__/
 strategies_backtest_multiprocess.ipynb
+market_data/
+trade_datas/
+
