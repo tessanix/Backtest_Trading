@@ -3,7 +3,8 @@ from values_definition import Result
 class PositionManager():
 
     def __init__(self, followingSlinTicks, tpInTicks, tickValue, 
-                 tickSize, positionSize, entryPrice, sl, tp, slModifiers, trade_is_done=False):
+                 tickSize, positionSize, entryPrice, sl, tp, slModifiers, 
+                 atrSlopeTreshold, tpToMoveInTicks, percentHitToMoveTP, trade_is_done=False):
         
         self.followingSlinTicks = followingSlinTicks
         self.tpInTicks = tpInTicks
@@ -18,6 +19,9 @@ class PositionManager():
         self.trade_is_done = trade_is_done
         self.profit = None
         self.nb_time_sl_moved = 0
+        self.atrSlopeTreshold = atrSlopeTreshold
+        self.tpToMoveInTicks = tpToMoveInTicks
+        self.percentHitToMoveTP = percentHitToMoveTP
 
     def profit_for_sl_hit(self, result):
         profit = self.followingSlinTicks*self.tickValue*self.positionSize
@@ -61,25 +65,37 @@ class PositionManager():
     def moveStopLossIfLevelHitDuringLongPosition(self, currentHigh):
         if self.nb_time_sl_moved == 0 and len(self.slModifiers)>0: 
             if (currentHigh-self.entryPrice)/self.tickSize>self.slModifiers[0][0]*self.tpInTicks:
-                followingSlinTicks = self.tpInTicks*self.slModifiers[0][1]
-                self.sl = self.entryPrice+followingSlinTicks*self.tickSize   
+                self.followingSlinTicks = self.tpInTicks*self.slModifiers[0][1]
+                self.sl = self.entryPrice+self.followingSlinTicks*self.tickSize   
                 self.nb_time_sl_moved += 1
 
         elif self.nb_time_sl_moved == 1 and len(self.slModifiers)>1: 
             if (currentHigh-self.entryPrice)/self.tickSize>self.slModifiers[1][0]*self.tpInTicks:
-                followingSlinTicks = self.tpInTicks*self.slModifiers[1][1]
-                self.sl = self.entryPrice+followingSlinTicks*self.tickSize     
+                self.followingSlinTicks = self.tpInTicks*self.slModifiers[1][1]
+                self.sl = self.entryPrice+self.followingSlinTicks*self.tickSize     
                 self.nb_time_sl_moved += 1
 
     def moveStopLossIfLevelHitDuringShortPosition(self, currentLow):
         if self.nb_time_sl_moved == 0 and len(self.slModifiers)>0: 
             if (self.entryPrice-currentLow)/self.tickSize>self.slModifiers[0][0]*self.tpInTicks:
-                followingSlinTicks = self.tpInTicks*self.slModifiers[0][1]
-                self.sl = self.entryPrice-followingSlinTicks*self.tickSize   
+                self.followingSlinTicks = self.tpInTicks*self.slModifiers[0][1]
+                self.sl = self.entryPrice-self.followingSlinTicks*self.tickSize   
                 self.nb_time_sl_moved += 1
 
         elif self.nb_time_sl_moved == 1 and len(self.slModifiers)>1: 
             if (self.entryPrice-currentLow)/self.tickSize>self.slModifiers[1][0]*self.tpInTicks:
-                followingSlinTicks = self.tpInTicks*self.slModifiers[1][1]
-                self.sl = self.entryPrice-followingSlinTicks*self.tickSize     
+                self.followingSlinTicks = self.tpInTicks*self.slModifiers[1][1]
+                self.sl = self.entryPrice-self.followingSlinTicks*self.tickSize     
                 self.nb_time_sl_moved += 1
+
+    def moveTragetProfitIfLevelHitDuringLongPosition(self, currentHigh, atrSlope):
+        if (currentHigh-self.entryPrice)/self.tickSize>=self.percentHitToMoveTP*self.tpInTicks and atrSlope > self.atrSlopeTreshold:
+            self.tpInTicks = self.tpInTicks + self.tpToMoveInTicks
+            self.tp = self.tp + self.tpToMoveInTicks*self.tickSize   
+
+    def moveTragetProfitIfLevelHitDuringShortPosition(self, currentLow, atrSlope):
+        if (self.entryPrice-currentLow)/self.tickSize>=self.percentHitToMoveTP*self.tpInTicks and atrSlope > self.atrSlopeTreshold:
+            self.tpInTicks = self.tpInTicks + self.tpToMoveInTicks
+            self.tp = self.tp - self.tpToMoveInTicks*self.tickSize   
+
+  

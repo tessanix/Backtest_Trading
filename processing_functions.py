@@ -106,9 +106,8 @@ def create_us_calendar_df(start_date="2023-03-24 12:00:00", end_date="2025-02-14
     return df
 
 def create_df(timeFramesUsedInMinutes=["1"], instrument="ES", 
-              start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00" ):#, rsiPeriod=14): #, chopPeriod:int=14): #, windowForLevels=12):
-    #root_path = "C:/Users/tessa/MotiveWave Data/"
-    root_path = "C:/Users/tessa/Codes/Backtest_Trading/market_data/"
+              start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00", atrSlopePeriod=5 ):#, rsiPeriod=14): #, chopPeriod:int=14): #, windowForLevels=12):
+    root_path = "market_data/"
 
     start_date = pd.to_datetime(start_date) #data are weird before this data (a problem from data provider???)
     end_date = pd.to_datetime(end_date)
@@ -201,9 +200,12 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="ES",
     main_df.dropna(inplace=True)
     main_df.reset_index(inplace=True)
 
-    # main_df["ATR"] = calculate_atr(main_df, period=14)
-    # main_df.dropna(inplace=True)
-    # main_df.reset_index(inplace=True)
+    main_df["ATR"] = calculate_atr(main_df, period=14)
+    main_df["atr_slope_in_percent"] = (main_df["ATR"].shift(-atrSlopePeriod) - main_df["ATR"]) / main_df["ATR"]
+
+    main_df.dropna(inplace=True)
+    main_df.reset_index(inplace=True)
+
     # main_df['support']    = np.where(main_df.low == main_df.low.rolling(windowForLevels, center=True).min(), main_df.low, 0) #C'est tricher car on utilise center=True mais on l'utilise quand meme pour un gain de temps de backtest
     # main_df['resistance'] = np.where(main_df.high == main_df.high.rolling(windowForLevels, center=True).max(), main_df.high, 0)
     
@@ -235,7 +237,7 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
 
     for id, trade_data in trades_database.items():
         #df, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, slModifiers, fbh, atrRatio = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
-        df, onlyUSSession, smke, timeframes, tc, slModifiers, forbHours, tenkanAngle, slInTicks, tpInTicks, calendar_event = trade_data
+        df, onlyUSSession, smke, timeframes, slModifiers, slInTicks, tpInTicks, atrRatioForTp, atrRatioForSl, atrSlopeTreshold, tpToMoveInTicks, percentHitToMoveTP = trade_data
 
         df = df[(start_date <= df["entry_date"] ) & (df["entry_date"] <= end_date)]
 
@@ -281,13 +283,18 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
             "Q2 duration (médiane)": quantiles_duration.loc[0.50], 
             "Q3 duration (75%)": quantiles_duration.loc[0.75],
             'timeframes': timeframes,
-            'tenkanCond':tenkanAngle,
+            # 'tenkanCond':tenkanAngle,
             'slModifiers':slModifiers,
-            "forbbiden Hours":forbHours,
-            "calendar_event":calendar_event,
-            "stopMethodsForKijunExitExit": smke,
-            'US_session_only' : onlyUSSession,
-            'ticksCrossed': tc,
+            # "forbbiden Hours":forbHours,
+            "percentHitToMoveTP":percentHitToMoveTP,
+            "atrRatioForTp":atrRatioForTp,
+            "atrRatioForSl":atrRatioForSl,
+            "atrSlopeTreshold":atrSlopeTreshold,
+            "tpToMoveInTicks":tpToMoveInTicks,
+            # "calendar_event":calendar_event,
+            # "stopMethodsForKijunExitExit": smke,
+            # 'US_session_only' : onlyUSSession,
+            # 'ticksCrossed': tc,
             # 'rsiVal': rsiVal
             # "patternVerif":pv
             # 'chopValue': chopVal, 

@@ -5,7 +5,7 @@ from values_definition import Position, Trend
 
 class DTP(Strategy):
 
-    def __init__(self, df:pd.DataFrame, timeframes:list[str], useAllEntryPoints:bool, ticksCrossed:int, tenkanCond:bool):
+    def __init__(self, df:pd.DataFrame, timeframes:list[str], useAllEntryPoints:bool, ticksCrossed:int=0, tenkanCond:bool=2):
 
         self.tenkanCond=tenkanCond
         self.ticksCrossed = ticksCrossed

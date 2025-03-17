@@ -5,8 +5,9 @@ from positionManager import PositionManager
 # from pattern_verification import verify_bull_reversal_doji, verify_bear_reversal_doji
 from datetime import timedelta
 
-def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame, instrument:str, usSession:bool, stopMethod:int, feesPerTrade:float, positionSize:int=1,
-                forbiddenHours:list=[], tpInTicksInitial:list=[25,70], slInTicksInitial:int=[15,40], slModifiers:list[list]=[[0.5, 0.15]]): #atrRatio:list=[1.5, 1.2]):
+def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame|None, instrument:str, usSession:bool, stopMethod:int, feesPerTrade:float, positionSize:int=1,
+                forbiddenHours:list=[], tpInTicksInitial:list=[25,70], slInTicksInitial:int=[15,40], slModifiers:list[list]=[[0.5, 0.15]], 
+                atrRatioForTp:float=0, atrRatioForSl:float=0, atrSlopeTreshold:float=0.5, tpToMoveInTicks:float=5, percentHitToMoveTP:float=0.9):
     
     CAPITAL = 50_000.0 # constant
     withCrossKijunExit = False if stopMethod == 0 else True
@@ -35,7 +36,7 @@ def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame, instrument:str
     for i in strategy.df.index[1:]: 
 
         currentClose = strategy.df.loc[i, "close"]
-        currentOpen = strategy.df.loc[i, "open"]
+        # currentOpen = strategy.df.loc[i, "open"]
         currentHigh = strategy.df.loc[i, "high"]
         currentLow = strategy.df.loc[i, "low"]
         currentDate = strategy.df.loc[i]["datetime"]
@@ -43,37 +44,53 @@ def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame, instrument:str
         high_before_low = strategy.df.loc[i, "high_before_low"] if 'high_before_low' in strategy.df.columns else False
 
         if position == Position.NONE:
-            us_calendar_df = us_calendar_df[us_calendar_df["datetime"]>=currentDate]
-            if len(us_calendar_df) > 0:
-                condition = (currentDate < us_calendar_df.iloc[0]["datetime"] - timedelta(minutes=20) or us_calendar_df.iloc[0]["datetime"] + timedelta(minutes=10) < currentDate)
+            if us_calendar_df is not None:
+                us_calendar_df = us_calendar_df[us_calendar_df["datetime"]>=currentDate]
+                if len(us_calendar_df) > 0:
+                    condition = (currentDate < us_calendar_df.iloc[0]["datetime"] - timedelta(minutes=20) or us_calendar_df.iloc[0]["datetime"] + timedelta(minutes=10) < currentDate)
+                else:
+                    condition = True
             else:
                 condition = True
+
             if (allowed_trading_hours_start <= currentDate.hour and currentDate.hour < allowed_trading_hours_end 
                 and currentDate.hour not in forbiddenHours and condition):
 
-                followingSlinTicks = slInTicksInitial[0] if currentDate.hour < usSessionHour else slInTicksInitial[1]#strategy.df.loc[i, 'ATR']*atrRatio[1]/tickSize
-                tpInTicks          = tpInTicksInitial[0] if currentDate.hour < usSessionHour else tpInTicksInitial[1]  #strategy.df.loc[i, 'ATR']*atrRatio[0]/tickSize
+                atrValue = strategy.df.loc[i, "ATR"]
+
+                if atrRatioForSl == 0:
+                    followingSlinTicks = slInTicksInitial[0] if currentDate.hour < usSessionHour else slInTicksInitial[1]
+                else:
+                    followingSlinTicks = atrValue*atrRatioForSl/tickSize
                 
-                position           = strategy.checkIfCanEnterPosition(i, tpInTicks, tickSize)
-                entryDate          = currentDate
-                entryPrice         = currentClose
+                if atrRatioForTp == 0:
+                    tpInTicks = tpInTicksInitial[0] if currentDate.hour < usSessionHour else tpInTicksInitial[1] 
+                else:
+                    tpInTicks = atrValue*atrRatioForTp/tickSize
+
+                position   = strategy.checkIfCanEnterPosition(i, tpInTicks, tickSize)
+                entryDate  = currentDate
+                entryPrice = currentClose
 
                 if position != Position.NONE:
                     tp = entryPrice + tpInTicks*tickSize if position == Position.LONG else entryPrice - tpInTicks*tickSize
                     sl = entryPrice - followingSlinTicks*tickSize if position == Position.LONG else entryPrice + followingSlinTicks*tickSize
-                    posManager = PositionManager(followingSlinTicks, tpInTicks, tickValue, tickSize, 
-                                                 positionSize, entryPrice, sl, tp, slModifiers, trade_is_done=False)
+                    posManager = PositionManager(followingSlinTicks, tpInTicks, tickValue, tickSize, positionSize, entryPrice, 
+                                                 sl, tp, slModifiers, atrSlopeTreshold, tpToMoveInTicks, percentHitToMoveTP, trade_is_done=False)
         else:
+            currentAtrSlope = strategy.df.loc[i, "atr_slope_in_percent"]
             ################################################### LONG ###################################################
             if position == Position.LONG:
 
                 if high_before_low:
                     posManager.moveStopLossIfLevelHitDuringLongPosition(currentHigh=currentHigh)
+                    posManager.moveTragetProfitIfLevelHitDuringLongPosition(currentHigh, atrSlope=currentAtrSlope)
                     posManager.checkTargetProfitHitDuringLongPosition(currentHigh=currentHigh)
                     posManager.checkStopLossHitDuringLongPosition(currentLow=currentLow)
                 else:
                     posManager.checkStopLossHitDuringLongPosition(currentLow=currentLow)
                     posManager.moveStopLossIfLevelHitDuringLongPosition(currentHigh=currentHigh)
+                    posManager.moveTragetProfitIfLevelHitDuringLongPosition(currentHigh, atrSlope=currentAtrSlope)
                     posManager.checkTargetProfitHitDuringLongPosition(currentHigh=currentHigh)
 
                 if not posManager.trade_is_done and \
@@ -91,9 +108,11 @@ def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame, instrument:str
                 if high_before_low:
                     posManager.checkStopLossHitDuringShortPosition(currentHigh=currentHigh)
                     posManager.moveStopLossIfLevelHitDuringShortPosition(currentLow=currentLow)
+                    posManager.moveTragetProfitIfLevelHitDuringShortPosition(currentLow, atrSlope=currentAtrSlope)
                     posManager.checkTargetProfitHitDuringShortPosition(currentLow=currentLow)
                 else:
                     posManager.moveStopLossIfLevelHitDuringShortPosition(currentLow=currentLow)
+                    posManager.moveTragetProfitIfLevelHitDuringShortPosition(currentLow, atrSlope=currentAtrSlope)
                     posManager.checkTargetProfitHitDuringShortPosition(currentLow=currentLow)
                     posManager.checkStopLossHitDuringShortPosition(currentHigh=currentHigh)
 
