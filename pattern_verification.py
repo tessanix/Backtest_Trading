@@ -45,20 +45,20 @@ def verify_3_loss_momentum(df, last_m15_candle_idx, actual_position):
             return True
     return False
 
-def verify_bull_reversal_doji(close, open, low, x=3.5):
-    if x == 0: return False
-    bodyCandleSize = close - open
-    if bodyCandleSize >= 0: # candle body is green or flat
-        lowWickCandleSize = open - low
-        if lowWickCandleSize >= bodyCandleSize*x: # wick is at leats x time greater than body size
+def verify_bull_reversal_doji(close, open, low, dojiRatio=3.5):
+    if dojiRatio == 0: return False
+    lowWickCandleSize = open - low
+    if lowWickCandleSize > 0: # candle body is green or flat and wick is greater than 0
+        bodyCandleSize = close - open
+        if lowWickCandleSize >= bodyCandleSize*dojiRatio: # wick is at leats x time greater than body size
             return True
     return False
 
-def verify_bear_reversal_doji(close, open, high, x=3.5):
-    if x == 0: return False
-    bodyCandleSize = open - close
-    if bodyCandleSize >= 0: # candle body is red or flat
-        highWickCandleSize = high - open
-        if highWickCandleSize >= bodyCandleSize*x: # wick is at leats x time greater than body size
+def verify_bear_reversal_doji(close, open, high, dojiRatio=3.5):
+    if dojiRatio == 0: return False
+    highWickCandleSize = high - open
+    if highWickCandleSize > 0: # candle body is red or flat
+        bodyCandleSize = open - close
+        if highWickCandleSize >= bodyCandleSize*dojiRatio: # wick is at leats x time greater than body size
             return True
     return False

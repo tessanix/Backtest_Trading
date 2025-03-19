@@ -106,37 +106,24 @@ def create_us_calendar_df(start_date="2023-03-24 12:00:00", end_date="2025-02-14
     return df
 
 def create_df(timeFramesUsedInMinutes=["1"], instrument="ES", 
-              start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00", atrSlopePeriod=5 ):#, rsiPeriod=14): #, chopPeriod:int=14): #, windowForLevels=12):
+              start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00", putVolumeInData=False ): #, atrSlopePeriod=5 ):#, rsiPeriod=14): #, chopPeriod:int=14): #, windowForLevels=12):
     root_path = "market_data/"
 
     start_date = pd.to_datetime(start_date) #data are weird before this data (a problem from data provider???)
     end_date = pd.to_datetime(end_date)
     main_df = pd.DataFrame()
-
+    usecols = ["datetime", "open", "high", "low", "close", "volume"] if putVolumeInData else ["datetime", "open", "high", "low", "close"]
     for idx, timeFrame in enumerate(timeFramesUsedInMinutes):
-        path =""
-        # if instrument == "MES":
-        #     path = root_path+"@MES.CME.TOP_STEP_"+timeFrame+".csv"
         if instrument == "ES":
-            #path = root_path+"@ES.CME.TOP_STEP_"+timeFrame+".csv"
             path = root_path+f"ES_{timeFrame}m_2-10-2020-12-00PM_3-10-2025-12-00PM_preprocessed.csv"
-        # elif instrument == "MNQ":
-        #     path = root_path+"@MNQ.CME.TOP_STEP_"+timeFrame+".csv"
-        # elif instrument == "NQ":
-        #     path = root_path+"@NQ.CME.TOP_STEP_"+timeFrame+".csv"
-        # elif instrument == "MCL":
-        #     path = root_path+"@MCL.NYMEX.TOP_STEP_"+timeFrame+".csv"
-        # elif instrument == "CL":
-        #     path = root_path+"@CL.NYMEX.TOP_STEP_"+timeFrame+".csv"
         else:
             print("Intrument "+instrument+" not found")
             return
         
-        
         if idx == 0:
             main_df = pd.read_csv(
                 filepath_or_buffer=path,
-                usecols=["datetime", "open", "high", "low", "close"],
+                usecols=usecols,
                 #names=["datetime", "open", "high", "low","close", "volume", "high_before_low"],
                 #header=None,
                 delimiter=";",
@@ -153,12 +140,14 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="ES",
         else:
             next_timeframe_df = pd.read_csv(
                 filepath_or_buffer=path,
-                names=["datetime", "open", "high", "low","close", "volume"],
-                header=None,
-                delimiter=","
+                usecols=["datetime", "open", "high", "low", "close"],
+                # names=["datetime", "open", "high", "low","close", "volume"],
+                # header=None,
+                delimiter=";"
             )
-            next_timeframe_df['datetime'] = pd.to_datetime(next_timeframe_df['datetime'], format='%d/%m/%Y %H:%M:%S')
+            next_timeframe_df['datetime'] = pd.to_datetime(next_timeframe_df['datetime'], format='%Y-%m-%d %H:%M:%S')#format='%d/%m/%Y %H:%M:%S')
             if start_date < next_timeframe_df.iloc[0]['datetime'] or next_timeframe_df.iloc[-1]['datetime'] < end_date:
+                print("aaaaaaaaaa error")
                 return
             next_timeframe_df = next_timeframe_df[(start_date <= next_timeframe_df['datetime'] ) & (next_timeframe_df['datetime'] <= end_date)]
             next_timeframe_df = compute_Ichimoku_on_DataFrame(next_timeframe_df)
@@ -200,11 +189,11 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="ES",
     main_df.dropna(inplace=True)
     main_df.reset_index(inplace=True)
 
-    main_df["ATR"] = calculate_atr(main_df, period=14)
-    main_df["atr_slope_in_percent"] = (main_df["ATR"].shift(-atrSlopePeriod) - main_df["ATR"]) / main_df["ATR"]
+    # main_df["ATR"] = calculate_atr(main_df, period=14)
+    # main_df["atr_slope_in_percent"] = (main_df["ATR"].shift(-atrSlopePeriod) - main_df["ATR"]) / main_df["ATR"]
 
-    main_df.dropna(inplace=True)
-    main_df.reset_index(inplace=True)
+    # main_df.dropna(inplace=True)
+    # main_df.reset_index(inplace=True)
 
     # main_df['support']    = np.where(main_df.low == main_df.low.rolling(windowForLevels, center=True).min(), main_df.low, 0) #C'est tricher car on utilise center=True mais on l'utilise quand meme pour un gain de temps de backtest
     # main_df['resistance'] = np.where(main_df.high == main_df.high.rolling(windowForLevels, center=True).max(), main_df.high, 0)
@@ -237,7 +226,7 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
 
     for id, trade_data in trades_database.items():
         #df, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, slModifiers, fbh, atrRatio = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
-        df, onlyUSSession, smke, timeframes, slModifiers, slInTicks, tpInTicks, atrRatioForTp, atrRatioForSl, atrSlopeTreshold, tpToMoveInTicks, percentHitToMoveTP = trade_data
+        df, onlyUSSession, smke, timeframes, bracketsModifier, slInTicks, tpInTicks, tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, calendar_events = trade_data
 
         df = df[(start_date <= df["entry_date"] ) & (df["entry_date"] <= end_date)]
 
@@ -284,16 +273,22 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
             "Q3 duration (75%)": quantiles_duration.loc[0.75],
             'timeframes': timeframes,
             # 'tenkanCond':tenkanAngle,
-            'slModifiers':slModifiers,
+            'bracketsModifier':bracketsModifier,
             # "forbbiden Hours":forbHours,
             "percentHitToMoveTP":percentHitToMoveTP,
-            "atrRatioForTp":atrRatioForTp,
-            "atrRatioForSl":atrRatioForSl,
-            "atrSlopeTreshold":atrSlopeTreshold,
+            # "atrRatioForTp":atrRatioForTp,
+            # "atrRatioForSl":atrRatioForSl,
+            # "atrSlopeTreshold":atrSlopeTreshold,
             "tpToMoveInTicks":tpToMoveInTicks,
-            # "calendar_event":calendar_event,
+            "nbrTimeMaxMoveTP":nbrTimeMaxMoveTP,
+            # "methodForMovingTP":methodForMovingTP,
             # "stopMethodsForKijunExitExit": smke,
-            # 'US_session_only' : onlyUSSession,
+            # "maxDailyPercentLoss":maxDailyPercentLoss,
+            # "maxDailyPercentProfit":maxDailyPercentProfit,
+            "maxLossStreak, avgLossStreak": get_loss_streak_data(df),
+            "sessionHour":sessionHour,
+            'US_session_only' : onlyUSSession,
+            "calendar_event":calendar_events,
             # 'ticksCrossed': tc,
             # 'rsiVal': rsiVal
             # "patternVerif":pv
@@ -314,6 +309,50 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
         winrate_dictionnary = dict(sorted(winrate_dictionnary.items(), key=sort_by_total_pnl_with_fees))
 
     return winrate_dictionnary
+
+
+
+# Step 1: Identify losing trades (where exit price is less than entry price)
+def get_loss_streak_data(tradesData):
+    tradesData['is_loss'] = tradesData['exit_price'] < tradesData['entry_price']
+    # Step 2: Identify streaks of losing trades
+    loss_streaks = []
+    current_streak = 0
+    for idx, loss in enumerate(tradesData['is_loss']):
+        if loss:
+            if current_streak == 0:  # This is the start of a new streak
+                streak_start_date = tradesData.loc[idx, 'entry_date']
+            current_streak += 1
+        else:
+            if current_streak > 0:  # We reached the end of a losing streak
+                streak_end_date = tradesData.loc[idx - 1, 'exit_date']
+                loss_streaks.append({
+                    'streak_length': current_streak,
+                    'start_date': streak_start_date,
+                    'end_date': streak_end_date
+                })
+            current_streak = 0  # Reset streak count
+
+    # Don't forget to add the last streak if it's a losing streak
+    if current_streak > 0:
+        streak_end_date = tradesData.loc[len(tradesData) - 1, 'exit_date']
+        loss_streaks.append({
+            'streak_length': current_streak,
+            'start_date': streak_start_date,
+            'end_date': streak_end_date
+        })
+
+    # Step 3: Calculate maximum losing streak and average losing streak
+    if loss_streaks:
+        max_loss_streak = max(loss_streaks, key=lambda x: x['streak_length'])
+        avg_loss_streak = sum([streak['streak_length'] for streak in loss_streaks]) / len(loss_streaks)
+    else:
+        max_loss_streak = None
+        avg_loss_streak = 0
+
+    return max_loss_streak['streak_length'], round(avg_loss_streak, 2)
+
+
 
 def return_trade_datas_dataframe(trade_datas_name, sort_option=2, start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00"):
     trades_database = load_object('trade_datas/'+trade_datas_name)

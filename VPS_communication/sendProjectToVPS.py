@@ -1,17 +1,19 @@
-import paramiko
-import os
+import paramiko, configparser, os
+
+config = configparser.ConfigParser()
+config.read('config.ini')
 
 # Détails de la connexion SSH
-hostname = '178.170.122.201'
+hostname = config['credentials']['server_ip']
 port = 22  # Par défaut, SSH utilise le port 22
-username = 'root'
-password = 'dmYUp7pMOBIVwdMh'  # Mot de passe SSH du serveur
+username = config['credentials']['username']
+password = config['credentials']['password']  # Mot de passe SSH du serveur
 local_directory = 'C:/Users/tessa/Codes/Backtest_Trading'  # Le répertoire local à envoyer
 remote_directory = 'Backtest_Trading/'  # Le répertoire distant où envoyer
 
 # Liste des chaînes à ignorer dans le nom des fichiers et répertoires
-ignored_strings = ['PM.csv', 'news.csv', '.pkl']  # Fichiers contenant ces mots
-ignored_dirs = ['__pycache__', '.git']  # Répertoires à ignorer
+ignored_strings = ['PM.csv', 'news.csv', '.pkl', '.txt', 'config.ini', 'gitignore', 'testing', 'input_data']  # Fichiers contenant ces mots
+ignored_dirs = ['__pycache__', '.git', 'VPS_communication']  # Répertoires à ignorer
 
 
 # Connexion SSH
@@ -35,7 +37,7 @@ def send_directory(client, local_directory, remote_directory):
         # Conversion du chemin Windows en chemin Linux
         root = root.replace("\\", "/")  # Remplacer les backslashes par des slashes
         # Vérifier si le répertoire actuel doit être ignoré
-        if any(ignored_dir in root for ignored_dir in ignored_dirs):
+        if any(ignored_dir in root for ignored_dir in ignored_dirs) and root!=local_directory:
             print(f"Répertoire ignoré : {root}")
             continue  # Ignorer ce répertoire
         
