@@ -155,6 +155,8 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="ES",
             suffixe = "_"+timeFrame
             main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'ssa', 'ssb']], on='datetime', how='left', suffixes = ["", suffixe])
             main_df[["ssa"+suffixe, "ssb"+suffixe]] = main_df[["ssa"+suffixe, "ssb"+suffixe]].ffill()
+            # main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'ssa', 'ssb', 'kijun']], on='datetime', how='left', suffixes = ["", suffixe])
+            # main_df[["ssa"+suffixe, "ssb"+suffixe, 'kijun'+suffixe]] = main_df[["ssa"+suffixe, "ssb"+suffixe, 'kijun'+suffixe]].ffill()
             # if idx == 1 :
             #     main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'open', 'close']], on='datetime', how='left', suffixes = ["", suffixe])
                 # main_df[["close"+suffixe, "open"+suffixe]] = main_df[["close"+suffixe, "open"+suffixe]].ffill()
@@ -282,12 +284,13 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
             "tpToMoveInTicks":tpToMoveInTicks,
             "nbrTimeMaxMoveTP":nbrTimeMaxMoveTP,
             # "methodForMovingTP":methodForMovingTP,
-            # "stopMethodsForKijunExitExit": smke,
             # "maxDailyPercentLoss":maxDailyPercentLoss,
             # "maxDailyPercentProfit":maxDailyPercentProfit,
+            "stopMethodsForKijunExitExit": smke,
             "maxLossStreak, avgLossStreak": get_loss_streak_data(df),
-            "sessionHour":sessionHour,
-            'US_session_only' : onlyUSSession,
+           # "sessionHour":sessionHour,
+            
+            #'US_session_only' : onlyUSSession,
             "calendar_event":calendar_events,
             # 'ticksCrossed': tc,
             # 'rsiVal': rsiVal

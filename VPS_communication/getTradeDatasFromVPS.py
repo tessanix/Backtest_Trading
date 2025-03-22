@@ -34,7 +34,7 @@ password = config['credentials']['password']  # Mot de passe SSH du serveur
 project_path = 'Backtest_Trading/trade_datas/ES/2023-03-24_12-00_2025-02-10_10-00/'
 local_path = f'C:/Users/tessa/Codes/{project_path}'  # Le répertoire local à envoyer
 remote_path = f'~/{project_path}'  # Le répertoire distant où envoyer
-remote_file = remote_path + "new_trade_data_method3.pkl"
+remote_file = remote_path + "new_trade_data_methode4.pkl"
 
 
 # Téléchargement du fichier

@@ -7,7 +7,7 @@ from pattern_verification import verify_bull_reversal_doji, verify_bear_reversal
 
 def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame|None, instrument:str, usSession:bool, stopMethod:int, feesPerTrade:float, positionSize:int=1,
                 forbiddenHours:list=[], tpInTicksInitial:list=[25,70], slInTicksInitial:int=[15,40], bracketsModifier:list[list]=[[0.5, 0.15]], 
-                tpToMoveInTicks:float=5, percentHitToMoveTP:float=0.9, nbrTimeMaxMoveTP:int=2, usSessionHour:int=16, dojiRatio:float=3.0): #, methodForMovingTP:int=1): # atrRatioForTp:float=0, atrRatioForSl:float=0, atrSlopeTreshold:float=0.5,
+                tpToMoveInTicks:float=5, percentHitToMoveTP:float=0.9, nbrTimeMaxMoveTP:int=2, usSessionHour:int=16): #, methodForMovingTP:int=1): # atrRatioForTp:float=0, atrRatioForSl:float=0, atrSlopeTreshold:float=0.5,
     
     INITIAL_CAPITAL = 50_000.0 # constant
     # actual_capital = INITIAL_CAPITAL
@@ -89,7 +89,7 @@ def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame|None, instrumen
                 if not posManager.trade_is_done and \
                     ((withCrossKijunExit and entryPrice < currentClose and strategy.checkIfCanStopLongPosition(i, stopMethod)) \
                       or (currentDate.hour >= 22)
-                      or verify_bear_reversal_doji(currentClose, currentOpen, currentHigh, dojiRatio=dojiRatio)
+                    #   or verify_bear_reversal_doji(currentClose, currentOpen, currentHigh, dojiRatio=dojiRatio)
                     ):
                     posManager.profit = posManager.profit_for_long_stop_condition_hit(currentClose)
                     posManager.exit_price = currentClose
@@ -112,7 +112,7 @@ def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame|None, instrumen
                 if not posManager.trade_is_done and \
                     ((withCrossKijunExit and entryPrice > currentClose and strategy.checkIfCanStopLongPosition(i, stopMethod)) \
                       or (currentDate.hour >= 22)
-                      or verify_bull_reversal_doji(currentClose, currentOpen, currentLow, dojiRatio=dojiRatio)
+                    #   or verify_bull_reversal_doji(currentClose, currentOpen, currentLow, dojiRatio=dojiRatio)
                     ):
                     posManager.profit = posManager.profit_for_short_stop_condition_hit(currentClose)
                     posManager.exit_price = currentClose

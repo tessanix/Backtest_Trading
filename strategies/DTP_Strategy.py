@@ -186,14 +186,28 @@ class DTP(Strategy):
             convergence_UTs.append(Trend.BEARISH)
   
         for tf in self.timeframes[1:]:
-            current_ssa_of_other_tf = self.df.loc[i]["ssa_"+tf]
+            # current_ssa_of_other_tf = self.df.loc[i]["ssa_"+tf]
             current_ssb_of_other_tf = self.df.loc[i]["ssb_"+tf]
-            if close > current_ssa_of_other_tf and close > current_ssb_of_other_tf:
+            if close > current_ssb_of_other_tf :#and close > current_ssa_of_other_tf:
                 convergence_UTs.append(Trend.BULLISH)
-            if close < current_ssa_of_other_tf and close < current_ssb_of_other_tf:
+            if close < current_ssb_of_other_tf : #and close < current_ssa_of_other_tf:
                 convergence_UTs.append(Trend.BEARISH)
 
-       
+
+        # for tf in self.timeframes[1:]:
+        #         current_kijun_of_highest_tf = self.df.loc[i]["kijun_"+tf]
+        #         if close > current_kijun_of_highest_tf:
+        #             convergence_UTs.append(Trend.BULLISH)
+        #         if close < current_kijun_of_highest_tf:
+        #             convergence_UTs.append(Trend.BEARISH)
+            # else:
+            #     current_ssa_of_other_tf = self.df.loc[i]["ssa_"+tf]
+            #     current_ssb_of_other_tf = self.df.loc[i]["ssb_"+tf]
+            #     if close > current_ssb_of_other_tf and close > current_ssa_of_other_tf:
+            #         convergence_UTs.append(Trend.BULLISH)
+            #     if close < current_ssb_of_other_tf and close < current_ssa_of_other_tf:
+            #         convergence_UTs.append(Trend.BEARISH)
+
         if all(trend == Trend.BULLISH for trend in convergence_UTs):
         
             if (self.price_crossed_above(prev_close, close, current_kijun, byHowFar=self.ticksCrossed*minTick) 
