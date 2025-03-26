@@ -188,9 +188,9 @@ class DTP(Strategy):
         for tf in self.timeframes[1:]:
             # current_ssa_of_other_tf = self.df.loc[i]["ssa_"+tf]
             current_ssb_of_other_tf = self.df.loc[i]["ssb_"+tf]
-            if close > current_ssb_of_other_tf :#and close > current_ssa_of_other_tf:
+            if close > current_ssb_of_other_tf: #and close > current_ssa_of_other_tf:
                 convergence_UTs.append(Trend.BULLISH)
-            if close < current_ssb_of_other_tf : #and close < current_ssa_of_other_tf:
+            if close < current_ssb_of_other_tf: # and close < current_ssa_of_other_tf:
                 convergence_UTs.append(Trend.BEARISH)
 
 
@@ -264,12 +264,14 @@ class DTP(Strategy):
         
         return position
     
-    def checkIfCanStopLongPosition(self, i: int, method:int) -> bool:
+    def checkIfCanStopLongPosition(self, i: int, entryPrice:float, closePrice:float, method:int) -> bool:
+        if method == 0: return False
+        cond1 = closePrice - entryPrice > 0
         current_kijun = self.df.loc[i]["kijun"]
 
         if method == 1:
             high = self.df.loc[i]["high"]
-            return high <= current_kijun
+            cond2 = high <= current_kijun
         
         elif method == 2:
             close = self.df.loc[i]["close"]
@@ -279,50 +281,56 @@ class DTP(Strategy):
         elif method == 3:
             close = self.df.loc[i]["close"]
             open = self.df.loc[i]["open"]
-            return close < open and close < current_kijun
+            cond2 = close < open and close < current_kijun
         
         elif method == 4:
             current_tenkan = self.df.loc[i]["tenkan"]
             high = self.df.loc[i]["high"]
             close = self.df.loc[i]["close"]
             open = self.df.loc[i]["open"]
-            return (high <= current_tenkan) or (close < open and open <= current_kijun)
+            cond2 = (high <= current_tenkan) or (close < open and open <= current_kijun)
         
         elif method == 5:
             current_tenkan = self.df.loc[i]["tenkan"]
             close = self.df.loc[i]["close"]
             open = self.df.loc[i]["open"]
-            return (close < open and open < current_tenkan) or (close < open and open <= current_kijun)
-        
-    def checkIfCanStopShortPosition(self, i: int, method:int) -> bool:
+            cond2 = (close < open and open < current_tenkan) or (close < open and open <= current_kijun)
+
+        return cond1 and cond2
+    
+    def checkIfCanStopShortPosition(self, i: int, entryPrice:float, closePrice:float, method:int) -> bool:
+        if method == 0: return False
+        cond1 = entryPrice - closePrice > 0
         current_kijun = self.df.loc[i]["kijun"]
 
         if method == 1:
             low = self.df.loc[i]["low"]
-            return low >= current_kijun
+            cond2 = low >= current_kijun
         
         elif method == 2:
             close = self.df.loc[i]["close"]
             open = self.df.loc[i]["open"]
-            return close > open and open >= current_kijun
+            cond2 = close > open and open >= current_kijun
         
         elif method == 3:
             close = self.df.loc[i]["close"]
             open = self.df.loc[i]["open"]
-            return close > open and close > current_kijun
+            cond2 = close > open and close > current_kijun
         
         elif method == 4:
             current_tenkan = self.df.loc[i]["tenkan"]
             low = self.df.loc[i]["low"]
             close = self.df.loc[i]["close"]
             open = self.df.loc[i]["open"]
-            return (low >= current_tenkan) or (close > open and open >= current_kijun)
+            cond2 = (low >= current_tenkan) or (close > open and open >= current_kijun)
         
         elif method == 5:
             current_tenkan = self.df.loc[i]["tenkan"]
             close = self.df.loc[i]["close"]
             open = self.df.loc[i]["open"]
-            return (close > open and open > current_tenkan) or (close > open and open >= current_kijun)
+            cond2 = (close > open and open > current_tenkan) or (close > open and open >= current_kijun)
+        
+        return cond1 and cond2
         
 
     

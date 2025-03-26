@@ -8,11 +8,11 @@ class Strategy(ABC):
         pass
 
     @abstractmethod 
-    def checkIfCanStopLongPosition(self, i: int, stopMethod: int) -> bool:
+    def checkIfCanStopLongPosition(self, i: int, entryPrice:float, closePrice:float, method:int) -> bool:
         pass
     
     @abstractmethod 
-    def checkIfCanStopShortPosition(self, i: int, stopMethod: int) -> bool:
+    def checkIfCanStopShortPosition(self, i: int, entryPrice:float, closePrice:float, method:int) -> bool:
         pass
     
     # @abstractmethod

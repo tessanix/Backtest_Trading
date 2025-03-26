@@ -112,7 +112,7 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="ES",
     start_date = pd.to_datetime(start_date) #data are weird before this data (a problem from data provider???)
     end_date = pd.to_datetime(end_date)
     main_df = pd.DataFrame()
-    usecols = ["datetime", "open", "high", "low", "close", "volume"] if putVolumeInData else ["datetime", "open", "high", "low", "close"]
+    usecols = ["datetime", "open", "high", "low", "close", "high_before_low", "volume"] if putVolumeInData else ["datetime", "open", "high", "low", "high_before_low", "close"]
     for idx, timeFrame in enumerate(timeFramesUsedInMinutes):
         if instrument == "ES":
             path = root_path+f"ES_{timeFrame}m_2-10-2020-12-00PM_3-10-2025-12-00PM_preprocessed.csv"
@@ -228,7 +228,7 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
 
     for id, trade_data in trades_database.items():
         #df, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, slModifiers, fbh, atrRatio = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
-        df, onlyUSSession, smke, timeframes, bracketsModifier, slInTicks, tpInTicks, tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, calendar_events = trade_data
+        df, onlyUSSession, timeframes, bracketsModifier, slInTicks, tpInTicks, tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, stopMethod, calendar_events = trade_data
 
         df = df[(start_date <= df["entry_date"] ) & (df["entry_date"] <= end_date)]
 
@@ -286,7 +286,7 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
             # "methodForMovingTP":methodForMovingTP,
             # "maxDailyPercentLoss":maxDailyPercentLoss,
             # "maxDailyPercentProfit":maxDailyPercentProfit,
-            "stopMethodsForKijunExitExit": smke,
+            "stopMethod": stopMethod,
             "maxLossStreak, avgLossStreak": get_loss_streak_data(df),
            # "sessionHour":sessionHour,
             
