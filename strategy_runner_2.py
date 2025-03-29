@@ -6,7 +6,8 @@ from positionManager import PositionManager
 
 def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame|None, instrument:str, usSession:bool, feesPerTrade:float, positionSize:int=1,
                 forbiddenHours:list=[], tpInTicksInitial:list=[25,70], slInTicksInitial:int=[15,40], bracketsModifier:list[list]=[[0.5, 0.15]], 
-                tpToMoveInTicks:float=5, percentHitToMoveTP:float=0.9, nbrTimeMaxMoveTP:int=2, usSessionHour:int=16, stopMethod:int=2): #, methodForMovingTP:int=1): # atrRatioForTp:float=0, atrRatioForSl:float=0, atrSlopeTreshold:float=0.5,
+                tpToMoveInTicks:float=5, percentHitToMoveTP:float=0.9, nbrTimeMaxMoveTP:int=2, usSessionHour:int=16, stopMethod:int=2, 
+                maxTimeOutsideProfitZone:int=30, nbrTimeMaxPassThroughTenkan:int=2, percentSlAlmostHit:float=0.75, slModifierAfterAlmostHit:float=0.1): #, methodForMovingTP:int=1): # atrRatioForTp:float=0, atrRatioForSl:float=0, atrSlopeTreshold:float=0.5,
     
     INITIAL_CAPITAL = 50_000.0 # constant
 
@@ -29,7 +30,8 @@ def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame|None, instrumen
     tradesData = []
     allowed_trading_hours_start = 7 if usSession == False else usSessionHour
     allowed_trading_hours_end = 20
-    posManager = PositionManager(tickValue, tickSize, positionSize, bracketsModifier, tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP) 
+    posManager = PositionManager(tickValue, tickSize, positionSize, bracketsModifier, tpToMoveInTicks, 
+                                 percentHitToMoveTP, nbrTimeMaxMoveTP, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit) #maxTimeOutsideProfitZone,
     for i in strategy.df.index[1:]: 
         
         currentClose = strategy.df.loc[i, "close"]
@@ -73,26 +75,27 @@ def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame|None, instrumen
         else:
             currentOpen = strategy.df.loc[i, "open"]
             currentTenkan = strategy.df.loc[i, "tenkan"]
+            # prevClose = strategy.df.loc[i-1, "close"]
             ################################################### LONG ###################################################
             if position == Position.LONG:
 
                 if high_before_low:
                     posManager.moveStopLossIfLevelHitDuringLongPosition(currentHigh=currentHigh)
-                    # posManager.moveTragetProfitIfLevelHitDuringLongPosition(currentHigh=currentHigh)
                     posManager.checkTargetProfitHitDuringLongPosition(currentHigh=currentHigh)
                     posManager.checkStopLossHitDuringLongPosition(currentLow=currentLow)
                 else:
                     posManager.checkStopLossHitDuringLongPosition(currentLow=currentLow)
                     posManager.moveStopLossIfLevelHitDuringLongPosition(currentHigh=currentHigh)
-                    # posManager.moveTragetProfitIfLevelHitDuringLongPosition(currentHigh=currentHigh)
                     posManager.checkTargetProfitHitDuringLongPosition(currentHigh=currentHigh)
 
+                posManager.moveStopLossIfAlmostHitDuringLongPosition(currentClose)
                 posManager.checkTenkanPassThroughDuingLongPosition(currentClose, currentOpen, currentTenkan)
                 posManager.moveTragetProfitIfLevelHitDuringLongPosition(currentHigh=currentHigh, currentClose=currentClose) #, currentOpen=currentOpen, currentTenkan=currentTenkan)
 
                 if not posManager.trade_is_done and ( 
-                strategy.checkIfCanStopLongPosition(i, entryPrice=entryPrice, closePrice=currentClose, method=stopMethod)
-                or currentDate.hour >= 22) :
+                #strategy.checkIfCanStopLongPosition(i, entryPrice=entryPrice, closePrice=currentClose, method=stopMethod)
+                # posManager.checkToMuchTimeInNoProfitZoneDuringLong(currentClose, prevClose, currentDate)
+                currentDate.hour >= 22):
                     posManager.long_stop_condition_hit(currentClose)            
 
             ################################################### SHORT ###################################################
@@ -101,20 +104,20 @@ def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame|None, instrumen
                 if high_before_low:
                     posManager.checkStopLossHitDuringShortPosition(currentHigh=currentHigh)
                     posManager.moveStopLossIfLevelHitDuringShortPosition(currentLow=currentLow)
-                    # posManager.moveTragetProfitIfLevelHitDuringShortPosition(currentLow=currentLow)
                     posManager.checkTargetProfitHitDuringShortPosition(currentLow=currentLow)
                 else:
                     posManager.moveStopLossIfLevelHitDuringShortPosition(currentLow=currentLow)
-                    # posManager.moveTragetProfitIfLevelHitDuringShortPosition(currentLow=currentLow)
                     posManager.checkTargetProfitHitDuringShortPosition(currentLow=currentLow)
                     posManager.checkStopLossHitDuringShortPosition(currentHigh=currentHigh)
-
+                    
+                posManager.moveStopLossIfAlmostHitDuringShortPosition(currentClose)
                 posManager.checkTenkanPassThroughDuingShortPosition(currentClose, currentOpen, currentTenkan)
                 posManager.moveTragetProfitIfLevelHitDuringShortPosition(currentLow=currentLow, currentClose=currentClose) #, currentOpen=currentOpen, currentTenkan=currentTenkan)
 
                 if not posManager.trade_is_done and ( 
-                strategy.checkIfCanStopShortPosition(i, entryPrice=entryPrice, closePrice=currentClose, method=stopMethod)
-                or currentDate.hour >= 22) :
+                #strategy.checkIfCanStopShortPosition(i, entryPrice=entryPrice, closePrice=currentClose, method=stopMethod)
+                # posManager.checkToMuchTimeInNoProfitZoneDuringShort(currentClose, prevClose, currentDate)
+                currentDate.hour >= 22):
                     posManager.short_stop_condition_hit(currentClose)
 
             if posManager.trade_is_done:

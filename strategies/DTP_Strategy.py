@@ -5,8 +5,8 @@ from values_definition import Position, Trend
 
 class DTP(Strategy):
 
-    def __init__(self, df:pd.DataFrame, timeframes:list[str], useAllEntryPoints:bool, ticksCrossed:int=0, tenkanCond:bool=2):
-
+    def __init__(self, df:pd.DataFrame, timeframes:list[str], useAllEntryPoints:bool, ticksCrossed:int=0, tenkanCond:bool=2, ratioDistanceKijun:float=0.4):
+        self.ratioDistanceKijun = ratioDistanceKijun
         self.tenkanCond=tenkanCond
         self.ticksCrossed = ticksCrossed
         self.df = df
@@ -130,23 +130,28 @@ class DTP(Strategy):
         #     resistance = ssb_higher_timeframe
 
         # pivot_level = self.df.loc[i]["PP"]
-        if position == Position.LONG:
-            # if close < pivot_level:
-            #     return Position.NONE
-            tp = close + tpInTicks*minTick 
-            if tp < resistance: 
-                return position
+        distance_kijun = abs(close-self.df.loc[i,"kijun_15"])
+        distance_sup_res = resistance-support
+        if distance_kijun < self.ratioDistanceKijun*distance_sup_res:
+            if position == Position.LONG:
+                # if close < pivot_level:
+                #     return Position.NONE
+                tp = close + tpInTicks*minTick 
+                if tp < resistance: 
+                    return position
+                else: 
+                    return Position.NONE
+            elif position == Position.SHORT:
+                # if close > pivot_level:
+                #     return Position.NONE
+                tp = close - tpInTicks*minTick
+                if tp > support: 
+                    return position
+                else: 
+                    return Position.NONE
             else: 
                 return Position.NONE
-        elif position == Position.SHORT:
-            # if close > pivot_level:
-            #     return Position.NONE
-            tp = close - tpInTicks*minTick
-            if tp > support: 
-                return position
-            else: 
-                return Position.NONE
-        else: 
+        else:
             return Position.NONE
 
     def checkTenkanAngleBullish(self, i):

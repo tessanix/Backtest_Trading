@@ -2,8 +2,8 @@ from values_definition import Result
 
 class PositionManager():
 
-    def __init__(self, tickValue, tickSize, positionSize, bracketsModifier, 
-                 tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP): #atrSlopeTreshold
+    def __init__(self, tickValue, tickSize, positionSize, bracketsModifier, tpToMoveInTicks, 
+                percentHitToMoveTP, nbrTimeMaxMoveTP, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit): #maxTimeOutsideProfitZone,
         
         self.tickValue = tickValue
         self.tickSize = tickSize
@@ -12,7 +12,11 @@ class PositionManager():
         self.tpToMoveInTicks = tpToMoveInTicks
         self.percentHitToMoveTP = percentHitToMoveTP
         self.nbrTimeMaxMoveTP = nbrTimeMaxMoveTP
+        self.nbrTimeMaxPassThroughTenkan = nbrTimeMaxPassThroughTenkan
+        self.percentSlAlmostHit = percentSlAlmostHit
+        self.slModifierAfterAlmostHit = slModifierAfterAlmostHit
         self.nbrPassThroughTenkan = None
+        self.stopLossAlmostHit = None
         self.nb_time_sl_moved = None
         self.nb_time_tp_moved = None
         self.followingSlinTicks = None
@@ -23,6 +27,8 @@ class PositionManager():
         self.exit_price = None
         self.trade_is_done = None
         self.profit = None
+        # self.maxTimeOutsideProfitZone = maxTimeOutsideProfitZone
+        # self.startTimeOutsideProfitZone = None
 
     def set_new_trade_attributes(self, followingSlinTicks, tpInTicks, entryPrice, sl, tp):
         self.followingSlinTicks = followingSlinTicks
@@ -31,6 +37,7 @@ class PositionManager():
         self.sl = sl
         self.tp = tp
         self.trade_is_done = False
+        self.stopLossAlmostHit = False
         self.nbrPassThroughTenkan = 0
         self.nb_time_sl_moved = 0
         self.nb_time_tp_moved = 0
@@ -44,10 +51,34 @@ class PositionManager():
         self.tp = None
         self.trade_is_done = None
         self.nbrPassThroughTenkan = None
+        self.stopLossAlmostHit = None
         self.nb_time_sl_moved = None
         self.nb_time_tp_moved = None
         self.profit = None
+        # self.startTimeOutsideProfitZone = None
+        # self.maxTimeOutsideProfitZone = None
 
+    # def checkToMuchTimeInNoProfitZoneDuringLong(self, currentClose, prevClose, currentDate):
+    #     if prevClose > self.entryPrice and currentClose < self.entryPrice: # first time going in NO PROFIT ZONE
+    #         self.startTimeOutsideProfitZone = currentDate
+
+    #     elif prevClose < self.entryPrice and currentClose > self.entryPrice: # leaving NO PROFIT ZONE
+    #         self.startTimeOutsideProfitZone = None
+
+    #     if self.startTimeOutsideProfitZone is not None and currentDate-self.startTimeOutsideProfitZone>timedelta(minutes=self.maxTimeOutsideProfitZone):
+    #         return True
+    #     return False
+    
+    # def checkToMuchTimeInNoProfitZoneDuringShort(self, currentClose, prevClose, currentDate):
+    #     if prevClose < self.entryPrice and currentClose > self.entryPrice: # first time going in NO PROFIT ZONE
+    #         self.startTimeOutsideProfitZone = currentDate
+
+    #     elif prevClose > self.entryPrice and currentClose < self.entryPrice: # leaving NO PROFIT ZONE
+    #         self.startTimeOutsideProfitZone = None
+
+    #     if self.startTimeOutsideProfitZone is not None and currentDate-self.startTimeOutsideProfitZone>timedelta(minutes=self.maxTimeOutsideProfitZone):
+    #         return True
+    #     return False
 
     def profit_for_sl_hit(self, result):
         profit = self.followingSlinTicks*self.tickValue*self.positionSize
@@ -75,12 +106,21 @@ class PositionManager():
             self.trade_is_done = True
             self.profit = self.profit_for_sl_hit(result)
 
+        if (self.entryPrice-currentLow)/self.tickSize>self.percentSlAlmostHit*self.followingSlinTicks \
+            and self.nb_time_sl_moved==0 and self.entryPrice>currentLow and not self.trade_is_done:
+            self.stopLossAlmostHit = True
+    
+
     def checkStopLossHitDuringShortPosition(self, currentHigh):
         if currentHigh >= self.sl and not self.trade_is_done:
             result = Result.WIN  if self.entryPrice > self.sl else Result.LOSS
             self.exit_price = self.sl
             self.trade_is_done = True
             self.profit = self.profit_for_sl_hit(result)
+
+        if (currentHigh-self.entryPrice)/self.tickSize>self.percentSlAlmostHit*self.followingSlinTicks \
+            and self.nb_time_sl_moved==0 and self.entryPrice<currentHigh and not self.trade_is_done:
+            self.stopLossAlmostHit = True
 
     def checkTargetProfitHitDuringLongPosition(self, currentHigh):
         if currentHigh >= self.tp and not self.trade_is_done:
@@ -93,106 +133,102 @@ class PositionManager():
             self.exit_price = self.tp
             self.trade_is_done = True
             self.profit = self.profit_for_tp_hit()
-    
-    # def moveStopLossIfLevelHitDuringLongPosition(self, currentHigh):
-    #     if self.nbrPassThroughTenkan >0:
-    #         if self.nb_time_sl_moved == 0 and len(self.bracketsModifier)>0: 
-    #             if (currentHigh-self.entryPrice)/self.tickSize>self.bracketsModifier[0][0]*self.tpInTicks:
-    #                 if self.bracketsModifier[0][1]>0:
-    #                     self.followingSlinTicks = self.tpInTicks*self.bracketsModifier[0][1]
-    #                     self.sl = self.entryPrice + self.followingSlinTicks*self.tickSize
-    #                 else:
-    #                     self.followingSlinTicks = self.followingSlinTicks*abs(self.bracketsModifier[0][1])
-    #                     self.sl = self.entryPrice - self.followingSlinTicks*self.tickSize
-    #                 self.nb_time_sl_moved += 1
 
-    #         elif self.nb_time_sl_moved == 1 and len(self.bracketsModifier)>1: 
-    #             if (currentHigh-self.entryPrice)/self.tickSize>self.bracketsModifier[1][0]*self.tpInTicks:
-    #                 if self.bracketsModifier[1][1]>0:
-    #                     self.followingSlinTicks = self.tpInTicks*self.bracketsModifier[1][1]
-    #                     self.sl = self.entryPrice + self.followingSlinTicks*self.tickSize   
-    #                 else:
-    #                     self.followingSlinTicks = self.followingSlinTicks*abs(self.bracketsModifier[1][1])
-    #                     self.sl = self.entryPrice - self.followingSlinTicks*self.tickSize
-    #                 self.nb_time_sl_moved += 1
+    def moveStopLossIfAlmostHitDuringLongPosition(self, currentClose):
+        if self.stopLossAlmostHit and self.nb_time_sl_moved==0:
 
+            if self.slModifierAfterAlmostHit>=0:
+                potentialNewSlInTicks = self.tpInTicks*self.slModifierAfterAlmostHit
+                potentialNewSl = self.entryPrice + potentialNewSlInTicks*self.tickSize
+
+                if currentClose > potentialNewSl:
+                    self.followingSlinTicks = potentialNewSlInTicks
+                    self.sl = potentialNewSl
+                    # self.nb_time_sl_moved += 1
+
+            else:
+                potentialNewSlInTicks = self.followingSlinTicks*abs(self.slModifierAfterAlmostHit)
+                potentialNewSl = self.entryPrice - potentialNewSlInTicks*self.tickSize
+
+                if currentClose > potentialNewSl:
+                    self.followingSlinTicks = potentialNewSlInTicks
+                    self.sl = potentialNewSl
+                    # self.nb_time_sl_moved += 1
+                
+    def moveStopLossIfAlmostHitDuringShortPosition(self, currentClose):
+        if self.stopLossAlmostHit and self.nb_time_sl_moved==0:
+
+            if self.slModifierAfterAlmostHit>=0:
+                potentialNewSlInTicks = self.tpInTicks*self.slModifierAfterAlmostHit
+                potentialNewSl = self.entryPrice - potentialNewSlInTicks*self.tickSize
+
+                if currentClose < potentialNewSl:
+                    self.followingSlinTicks = potentialNewSlInTicks
+                    self.sl = potentialNewSl
+                    # self.nb_time_sl_moved += 1
+
+            else:
+                potentialNewSlInTicks = self.followingSlinTicks*abs(self.slModifierAfterAlmostHit)
+                potentialNewSl = self.entryPrice + potentialNewSlInTicks*self.tickSize
+
+                if currentClose < potentialNewSl:
+                    self.followingSlinTicks = potentialNewSlInTicks
+                    self.sl = potentialNewSl
+                    # self.nb_time_sl_moved += 1
 
     def moveStopLossIfLevelHitDuringLongPosition(self, currentHigh):
-        # if self.nbrPassThroughTenkan >0:
         if self.nb_time_tp_moved > 0:
             for i, modifier in enumerate(self.bracketsModifier):
-                if modifier == []: break
-                if self.nb_time_sl_moved == i and (currentHigh-self.entryPrice)/self.tickSize>modifier[0]*self.tpInTicks: 
-                    if modifier[1]>0:
-                        self.followingSlinTicks = self.tpInTicks*modifier[1]
-                        self.sl = self.entryPrice + self.followingSlinTicks*self.tickSize
-                    else:
-                        self.followingSlinTicks = self.followingSlinTicks*abs(modifier[1])
-                        self.sl = self.entryPrice - self.followingSlinTicks*self.tickSize
-
+                if modifier==[]: break
+                # condition = self.nb_time_sl_moved == i and (currentHigh-self.entryPrice)/self.tickSize>modifier[0]*self.tpInTicks
+                if self.nb_time_sl_moved == i and (currentHigh-self.entryPrice)/self.tickSize>modifier[0]*self.tpInTicks:
                     self.nb_time_sl_moved += 1
+                    if not self.stopLossAlmostHit or modifier[1] > self.slModifierAfterAlmostHit:
+                        if modifier[1]>=0:
+                            self.followingSlinTicks = self.tpInTicks*modifier[1]
+                            self.sl = self.entryPrice + self.followingSlinTicks*self.tickSize
+                        else:
+                            self.followingSlinTicks = self.followingSlinTicks*abs(modifier[1])
+                            self.sl = self.entryPrice - self.followingSlinTicks*self.tickSize
 
-    # def moveStopLossIfLevelHitDuringShortPosition(self, currentLow):
-    #     if self.nbrPassThroughTenkan >0:
-    #         if self.nb_time_sl_moved == 0 and len(self.bracketsModifier)>0: 
-    #             if (self.entryPrice-currentLow)/self.tickSize>self.bracketsModifier[0][0]*self.tpInTicks:
-    #                 if self.bracketsModifier[0][1]>0:
-    #                     self.followingSlinTicks = self.tpInTicks*self.bracketsModifier[0][1]
-    #                     self.sl = self.entryPrice - self.followingSlinTicks*self.tickSize   
-    #                 else:
-    #                     self.followingSlinTicks = self.tpInTicks*abs(self.bracketsModifier[0][1])
-    #                     self.sl = self.entryPrice + self.followingSlinTicks*self.tickSize   
-    #                 self.nb_time_sl_moved += 1
 
-    #         elif self.nb_time_sl_moved == 1 and len(self.bracketsModifier)>1: 
-    #             if (self.entryPrice-currentLow)/self.tickSize>self.bracketsModifier[1][0]*self.tpInTicks:
-    #                 if self.bracketsModifier[1][1]>0:
-    #                     self.followingSlinTicks = self.tpInTicks*self.bracketsModifier[1][1]
-    #                     self.sl = self.entryPrice - self.followingSlinTicks*self.tickSize   
-    #                 else:
-    #                     self.followingSlinTicks = self.tpInTicks*abs(self.bracketsModifier[1][1])
-    #                     self.sl = self.entryPrice + self.followingSlinTicks*self.tickSize   
-    #                 self.nb_time_sl_moved += 1
-    
     def moveStopLossIfLevelHitDuringShortPosition(self, currentLow):
-        # if self.nbrPassThroughTenkan >0:
-        if self.nb_time_tp_moved > 0:
+        if self.nb_time_tp_moved > 0 :
             for i, modifier in enumerate(self.bracketsModifier):
-                if modifier == []: break
-                if self.nb_time_sl_moved == i and (self.entryPrice-currentLow)/self.tickSize>modifier[0]*self.tpInTicks: 
-                    if modifier[1]>0:
-                        self.followingSlinTicks = self.tpInTicks*modifier[1]
-                        self.sl = self.entryPrice - self.followingSlinTicks*self.tickSize
-                    else:
-                        self.followingSlinTicks = self.followingSlinTicks*abs(modifier[1])
-                        self.sl = self.entryPrice + self.followingSlinTicks*self.tickSize
-
+                if modifier==[]: break
+                #condition = self.nb_time_sl_moved == i and (self.entryPrice-currentLow)/self.tickSize>modifier[0]*self.tpInTicks
+                if self.nb_time_sl_moved == i and (self.entryPrice-currentLow)/self.tickSize>modifier[0]*self.tpInTicks:
                     self.nb_time_sl_moved += 1
+                    if not self.stopLossAlmostHit or modifier[1] > self.slModifierAfterAlmostHit: 
+                        if modifier[1]>=0:
+                            self.followingSlinTicks = self.tpInTicks*modifier[1]
+                            self.sl = self.entryPrice - self.followingSlinTicks*self.tickSize
+                        else:
+                            self.followingSlinTicks = self.followingSlinTicks*abs(modifier[1])
+                            self.sl = self.entryPrice + self.followingSlinTicks*self.tickSize
 
     def checkTenkanPassThroughDuingLongPosition(self, currentClose, currentOpen, currentTenkan):
         if currentOpen < currentTenkan and currentTenkan < currentClose and self.entryPrice < currentClose:
             self.nbrPassThroughTenkan+=1
+        # elif self.entryPrice > currentClose and self.nbrPassThroughTenkan>0:
+        #     self.nbrPassThroughTenkan=0
     
     def checkTenkanPassThroughDuingShortPosition(self, currentClose, currentOpen, currentTenkan):
         if currentOpen > currentTenkan and currentTenkan > currentClose and self.entryPrice > currentClose:
             self.nbrPassThroughTenkan+=1
+        # elif self.entryPrice < currentClose and self.nbrPassThroughTenkan>0:
+        #     self.nbrPassThroughTenkan=0
 
-    def moveTragetProfitIfLevelHitDuringLongPosition(self, currentHigh, currentClose): # currentOpen, , currentTenkan):
-        # if (currentHigh-self.entryPrice)/self.tickSize>=self.percentHitToMoveTP*self.tpInTicks \
-        # and self.nbrPassThroughTenkan < self.nbrTimeMaxMoveTP:
+    def moveTragetProfitIfLevelHitDuringLongPosition(self, currentHigh, currentClose): 
         if (currentHigh-self.entryPrice)/self.tickSize>=self.percentHitToMoveTP*self.tpInTicks and currentClose > self.entryPrice \
-        and self.nbrPassThroughTenkan < 2 and self.nb_time_tp_moved < self.nbrTimeMaxMoveTP and self.nbrTimeMaxMoveTP and not self.trade_is_done:
-            # self.nbrPassThroughTenkan+=1
+        and self.nbrPassThroughTenkan < self.nbrTimeMaxPassThroughTenkan and self.nb_time_tp_moved < self.nbrTimeMaxMoveTP and not self.trade_is_done:
             self.nb_time_tp_moved+=1
             self.tpInTicks = self.tpInTicks + self.tpToMoveInTicks
             self.tp = self.tp + self.tpToMoveInTicks*self.tickSize   
 
-    def moveTragetProfitIfLevelHitDuringShortPosition(self, currentLow, currentClose): # currentOpen, , currentTenkan):
-        # if (self.entryPrice-currentLow)/self.tickSize>=self.percentHitToMoveTP*self.tpInTicks \
-        # and self.nbrPassThroughTenkan < self.nbrTimeMaxMoveTP:
+    def moveTragetProfitIfLevelHitDuringShortPosition(self, currentLow, currentClose): 
         if (self.entryPrice-currentLow)/self.tickSize>=self.percentHitToMoveTP*self.tpInTicks and currentClose > self.entryPrice \
-        and self.nbrPassThroughTenkan < 2 and self.nb_time_tp_moved < self.nbrTimeMaxMoveTP and not self.trade_is_done:
-            # self.nbrPassThroughTenkan+=1
+        and self.nbrPassThroughTenkan < self.nbrTimeMaxPassThroughTenkan and self.nb_time_tp_moved < self.nbrTimeMaxMoveTP and not self.trade_is_done:
             self.nb_time_tp_moved+=1
             self.tpInTicks = self.tpInTicks + self.tpToMoveInTicks
             self.tp = self.tp - self.tpToMoveInTicks*self.tickSize   

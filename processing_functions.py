@@ -153,8 +153,8 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="ES",
             next_timeframe_df = compute_Ichimoku_on_DataFrame(next_timeframe_df)
             ### ADD SSA AND SSB DATA FROM SUPERIOR TIMEFRAME ###
             suffixe = "_"+timeFrame
-            main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'ssa', 'ssb']], on='datetime', how='left', suffixes = ["", suffixe])
-            main_df[["ssa"+suffixe, "ssb"+suffixe]] = main_df[["ssa"+suffixe, "ssb"+suffixe]].ffill()
+            main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'ssb', 'kijun']], on='datetime', how='left', suffixes = ["", suffixe])
+            main_df[["ssb"+suffixe, 'kijun'+suffixe]] = main_df[[ "ssb"+suffixe, 'kijun'+suffixe]].ffill()
             # main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'ssa', 'ssb', 'kijun']], on='datetime', how='left', suffixes = ["", suffixe])
             # main_df[["ssa"+suffixe, "ssb"+suffixe, 'kijun'+suffixe]] = main_df[["ssa"+suffixe, "ssb"+suffixe, 'kijun'+suffixe]].ffill()
             # if idx == 1 :
@@ -228,82 +228,89 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
 
     for id, trade_data in trades_database.items():
         #df, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, slModifiers, fbh, atrRatio = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
-        df, onlyUSSession, timeframes, bracketsModifier, slInTicks, tpInTicks, tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, stopMethod, calendar_events = trade_data
+        df, onlyUSSession, timeframes, bracketsModifier, slInTicks, tpInTicks, tpToMoveInTicks, \
+        percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, stopMethod, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit, ratioDistanceKijun, calendar_events = trade_data
+        if not df.empty:
+            df = df[(start_date <= df["entry_date"] ) & (df["entry_date"] <= end_date)]
 
-        df = df[(start_date <= df["entry_date"] ) & (df["entry_date"] <= end_date)]
-
-        loser_entry_price = df.loc[df['profit_from_start(%)']<0, 'entry_price']
-        loser_exit_price = df.loc[df['profit_from_start(%)']<0, 'exit_price']
-        avg_real_sl_executed = (abs(loser_entry_price-loser_exit_price).mean())/tickSize
-        
-        winner_entry_price = df.loc[df['profit_from_start(%)']>0, 'entry_price']
-        winner_exit_price = df.loc[df['profit_from_start(%)']>0, 'exit_price']
-        avg_real_tp_executed = (abs(winner_entry_price-winner_exit_price).mean())/tickSize
-
-        wins = df.loc[df['profit_from_start(%)']>0, 'position'].count()
-        loss = df.loc[df['profit_from_start(%)']<0, 'position'].count()
-        winrate = 0.0 if loss+wins == 0.0 else 100*wins/(loss+wins)
-        breakevens = df.loc[df['profit_from_start(%)']==0, 'position'].count()
-        # avg_gain_from_start = df.loc[df['profit_from_start(%)']>0, 'profit_from_start(%)'].mean()
-        # avg_loss_from_start = df.loc[df['profit_from_start(%)']<0, 'profit_from_start(%)'].mean()
-
-        avg_gain_including_fees_from_start = df.loc[df['profit_including_fees_from_start(%)']>0, 'profit_including_fees_from_start(%)'].mean()
-        avg_loss_including_fees_from_start = df.loc[df['profit_including_fees_from_start(%)']<0, 'profit_including_fees_from_start(%)'].mean()
-
-        # median_times_below_breakeven = df['times_below_breakeven'].median()
-        total_return_without_fees_from_start = df['profit_from_start(%)'].sum()
-        total_return_including_fees_from_start = df['profit_including_fees_from_start(%)'].sum()
-
-        quantiles_duration = (df["exit_date"]-df["entry_date"]).quantile([0.50,0.75])
-
-        winrate_dictionnary[id] = {
-            'Winrate [%]': round(winrate, 3), 
-            "Total return brut [%]": round(total_return_without_fees_from_start, 2),
-            "Total return net [%]": round(total_return_including_fees_from_start, 2),
-            # "Avg. gain brut [%]": round(avg_gain_from_start, 2),
-            # "Avg. loss brut [%]": round(avg_loss_from_start,2),
-            "Avg. gain net [%]": round(avg_gain_including_fees_from_start, 3),
-            "Avg. loss net [%]": round(avg_loss_including_fees_from_start,3),
-            'Risk ratio': round(avg_real_tp_executed/avg_real_sl_executed, 2), 
-            'Nbr Wins/Loss/Breakeven' : (wins, loss, breakevens),
-            "Avg. executed TP [Ticks]": round(avg_real_tp_executed, 1),
-            "Avg. executed SL [Ticks]": round(avg_real_sl_executed, 1),
-
-            '[SL1, TP1] / [SL2, TP2] [Ticks]': (slInTicks[0],tpInTicks[0], slInTicks[1], tpInTicks[1]),
-            # 'TP [Ticks]': (tp[0], tp[1]),
-            "Q2 duration (médiane)": quantiles_duration.loc[0.50], 
-            "Q3 duration (75%)": quantiles_duration.loc[0.75],
-            'timeframes': timeframes,
-            # 'tenkanCond':tenkanAngle,
-            'bracketsModifier':bracketsModifier,
-            # "forbbiden Hours":forbHours,
-            "percentHitToMoveTP":percentHitToMoveTP,
-            # "atrRatioForTp":atrRatioForTp,
-            # "atrRatioForSl":atrRatioForSl,
-            # "atrSlopeTreshold":atrSlopeTreshold,
-            "tpToMoveInTicks":tpToMoveInTicks,
-            "nbrTimeMaxMoveTP":nbrTimeMaxMoveTP,
-            # "methodForMovingTP":methodForMovingTP,
-            # "maxDailyPercentLoss":maxDailyPercentLoss,
-            # "maxDailyPercentProfit":maxDailyPercentProfit,
-            "stopMethod": stopMethod,
-            "maxLossStreak, avgLossStreak": get_loss_streak_data(df),
-           # "sessionHour":sessionHour,
+            loser_entry_price = df.loc[df['profit_from_start(%)']<0, 'entry_price']
+            loser_exit_price = df.loc[df['profit_from_start(%)']<0, 'exit_price']
+            avg_real_sl_executed = (abs(loser_entry_price-loser_exit_price).mean())/tickSize
             
-            #'US_session_only' : onlyUSSession,
-            "calendar_event":calendar_events,
-            # 'ticksCrossed': tc,
-            # 'rsiVal': rsiVal
-            # "patternVerif":pv
-            # 'chopValue': chopVal, 
-            # 'mta':mta,
-            # 'chopPeriod':chopPeriod,
-            # 'nbr_of_points':nbr_of_points,
-            # 'delta_in_ticks':delta_in_ticks,
-            # 'windowForLevels':windowForLevels,
-            # "ticksAbove": ticksAbove
-            #'nbr_of_trades': wins.item()+loss.item(), 
-        }
+            winner_entry_price = df.loc[df['profit_from_start(%)']>0, 'entry_price']
+            winner_exit_price = df.loc[df['profit_from_start(%)']>0, 'exit_price']
+            avg_real_tp_executed = (abs(winner_entry_price-winner_exit_price).mean())/tickSize
+
+            wins = df.loc[df['profit_from_start(%)']>0, 'position'].count()
+            loss = df.loc[df['profit_from_start(%)']<0, 'position'].count()
+            winrate = 0.0 if loss+wins == 0.0 else 100*wins/(loss+wins)
+            breakevens = df.loc[df['profit_from_start(%)']==0, 'position'].count()
+            # avg_gain_from_start = df.loc[df['profit_from_start(%)']>0, 'profit_from_start(%)'].mean()
+            # avg_loss_from_start = df.loc[df['profit_from_start(%)']<0, 'profit_from_start(%)'].mean()
+
+            avg_gain_including_fees_from_start = df.loc[df['profit_including_fees_from_start(%)']>0, 'profit_including_fees_from_start(%)'].mean()
+            avg_loss_including_fees_from_start = df.loc[df['profit_including_fees_from_start(%)']<0, 'profit_including_fees_from_start(%)'].mean()
+
+            # median_times_below_breakeven = df['times_below_breakeven'].median()
+            total_return_without_fees_from_start = df['profit_from_start(%)'].sum()
+            total_return_including_fees_from_start = df['profit_including_fees_from_start(%)'].sum()
+
+            quantiles_duration = (df["exit_date"]-df["entry_date"]).quantile([0.50,0.75])
+
+            winrate_dictionnary[id] = {
+                'Winrate [%]': round(winrate, 3), 
+                "Total return brut [%]": round(total_return_without_fees_from_start, 2),
+                "Total return net [%]": round(total_return_including_fees_from_start, 2),
+                # "Avg. gain brut [%]": round(avg_gain_from_start, 2),
+                # "Avg. loss brut [%]": round(avg_loss_from_start,2),
+                "Avg. gain net [%]": round(avg_gain_including_fees_from_start, 3),
+                "Avg. loss net [%]": round(avg_loss_including_fees_from_start,3),
+                'Risk ratio': round(avg_real_tp_executed/avg_real_sl_executed, 2), 
+                'Nbr Wins/Loss/Breakeven' : (wins, loss, breakevens),
+                "Avg. executed TP [Ticks]": round(avg_real_tp_executed, 1),
+                "Avg. executed SL [Ticks]": round(avg_real_sl_executed, 1),
+
+                '[SL1, TP1] / [SL2, TP2] [Ticks]': (slInTicks[0],tpInTicks[0], slInTicks[1], tpInTicks[1]),
+                # 'TP [Ticks]': (tp[0], tp[1]),
+                "Q2 duration (médiane)": quantiles_duration.loc[0.50], 
+                "Q3 duration (75%)": quantiles_duration.loc[0.75],
+                'timeframes': timeframes,
+                'bracketsModifier':bracketsModifier,
+                "percentHitToMoveTP":percentHitToMoveTP,
+                "slModifierAfterAlmostHit":slModifierAfterAlmostHit,
+                "percentSlAlmostHit":percentSlAlmostHit,
+                "PassThrTenkan":nbrTimeMaxPassThroughTenkan,
+                "ratioDistanceKijun":ratioDistanceKijun,
+                "tpToMoveInTicks":tpToMoveInTicks,
+                "nbrTimeMaxMoveTP":nbrTimeMaxMoveTP,
+                "maxLossStreak, avgLossStreak": get_loss_streak_data(df),
+                # 'tenkanCond':tenkanAngle,
+                # "forbbiden Hours":forbHours,
+                # "atrRatioForTp":atrRatioForTp,
+                # "atrRatioForSl":atrRatioForSl,
+                # "atrSlopeTreshold":atrSlopeTreshold,
+                # "maxTimeOutsideProfitZone":maxTimeOutsideProfitZone,
+                # "methodForMovingTP":methodForMovingTP,
+                # "maxDailyPercentLoss":maxDailyPercentLoss,
+                # "maxDailyPercentProfit":maxDailyPercentProfit,
+                # "stopMethod": stopMethod,
+            # "sessionHour":sessionHour,
+                
+                #'US_session_only' : onlyUSSession,
+                # "calendar_event":calendar_events,
+                # 'ticksCrossed': tc,
+                # 'rsiVal': rsiVal
+                # "patternVerif":pv
+                # 'chopValue': chopVal, 
+                # 'mta':mta,
+                # 'chopPeriod':chopPeriod,
+                # 'nbr_of_points':nbr_of_points,
+                # 'delta_in_ticks':delta_in_ticks,
+                # 'windowForLevels':windowForLevels,
+                # "ticksAbove": ticksAbove
+                #'nbr_of_trades': wins.item()+loss.item(), 
+            }
+
     if sort_option == 1:
         winrate_dictionnary = dict(sorted(winrate_dictionnary.items(), key=sort_by_winrate))
     elif sort_option == 2:

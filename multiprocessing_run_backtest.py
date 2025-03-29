@@ -13,24 +13,25 @@ def convertir_en_entiers(liste):
 def run_strategy(combination, positionSize, instrument, start_date, end_date):
     start_time = datetime.now()
     # combination, positionSize, instrument, start_date, end_date = arg_list
-    onlyUSSession, timeframes, bracketsModifier, slInTicks, tpInTicks, tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, stopMethod, calendar_events = combination 
+    onlyUSSession, timeframes, bracketsModifier, slInTicks, tpInTicks, tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, \
+    stopMethod, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit, ratioDistanceKijun, calendar_events = combination 
 
     df = create_df(timeFramesUsedInMinutes=timeframes, instrument=instrument, start_date=start_date, end_date=end_date) #, windowForLevels=windowForLevels) #, windowForLevels=windowForLevels) #chopPeriod=chopp)
     df.reset_index(inplace=True)
 
     us_calendar_df = create_us_calendar_df(start_date, end_date, contains=calendar_events) if len(calendar_events) > 0 else None
 
-    strategy = DTP(df[0:], timeframes, useAllEntryPoints=False, ticksCrossed=0, tenkanCond=2)
+    strategy = DTP(df[0:], timeframes, useAllEntryPoints=False, ticksCrossed=0, tenkanCond=2, ratioDistanceKijun=ratioDistanceKijun)
                    #nbr_of_points=nbr_of_points, delta_in_ticks=delta_in_ticks) #chopValue=chopv)
     #print(f'{datetime.now()} - iteration n°{iteration} is running...') #: parameters: sl={sl}, tp={tp}, US_hours_only={onlyUSSession}, sm={sm} started')
     trades = strategyLoop(strategy, us_calendar_df, instrument, onlyUSSession, feesPerTrade=4.36, positionSize=positionSize, forbiddenHours=[], 
                           slInTicksInitial=slInTicks, tpInTicksInitial=tpInTicks, bracketsModifier=bracketsModifier, tpToMoveInTicks=tpToMoveInTicks, percentHitToMoveTP=percentHitToMoveTP, 
-                          nbrTimeMaxMoveTP=nbrTimeMaxMoveTP, usSessionHour=sessionHour, stopMethod=stopMethod)
+                          nbrTimeMaxMoveTP=nbrTimeMaxMoveTP, usSessionHour=sessionHour, stopMethod=stopMethod, nbrTimeMaxPassThroughTenkan=nbrTimeMaxPassThroughTenkan, percentSlAlmostHit=percentSlAlmostHit, slModifierAfterAlmostHit=slModifierAfterAlmostHit)
     end_time = datetime.now()
 
     #print(f'{datetime.now()} - iteration n°{iteration} finished in {end_time-start_time}')
     result = (start_time.replace(microsecond=0), end_time.replace(microsecond=0), 
-              [trades, onlyUSSession, timeframes, bracketsModifier, slInTicks, tpInTicks, tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, stopMethod, calendar_events])#chopv, chopp])
+              [trades, onlyUSSession, timeframes, bracketsModifier, slInTicks, tpInTicks, tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, stopMethod, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit, ratioDistanceKijun, calendar_events])#chopv, chopp])
     return result
 
 
@@ -65,20 +66,25 @@ def main():
         # "maxDailyPercentLoss":[-1.0, -2.0], 
         # "maxDailyPercentProfit":[1.5, 2.0, 2.5],
         # "dojiRatio": [3.0, 5.0, 7.0],
+        "ratioDistanceKijun": [0.0, 0.2, 0.4, 0.6, 0.8],
+        "slModifierAfterAlmostHit":[0.1],
+        "percentSlAlmostHit":[0.7],
+        # "maxTimeOutsideProfitZone": [40],
+        "nbrTimeMaxPassThroughTenkan":[2],
         "exitPositionMethod": [0], #stopMethodsForKijunExitExit==0 => no exit method used
         "sessionHour":[16],
-        "nbrTimeMaxMoveTP":[2,],
+        "nbrTimeMaxMoveTP":[2],
         "calendar_events": [[]], # ["CPI", "PPI", "Fed", "FOMC", "PCE"], ["Fed", "FOMC", "PCE"]],
         "percentHitToMoveTP": [0.55],
-        "tpToMoveInTicks":[11,12],
+        "tpToMoveInTicks":[12],
         "bracketsModifier": [ 
             # [[]],
             # [[0.7, -0.5]],   
-            [[0.6, -0.5]],  
+            # [[0.6, -0.5]],  
             [[0.6, -0.5], [0.9, 0.2]], 
             # [[0.6, -0.4], [0.7, -0.2], [0.9, 0.25]],
             [[0.6, -0.5], [0.7, -0.1], [0.95, 0.45]],
-            # [[0.6, -0.5], [0.75, -0.2], [0.9, 0.3]],
+            [[0.6, -0.5], [0.7, -0.1], [0.8, 0.2], [0.92, 0.6]],
         ],
         "slInTicksBeforeSession": [50],
         "tpInTicksBeforeSession": [25],
@@ -111,24 +117,29 @@ def main():
     # for maxDailyPercentLoss in params["maxDailyPercentLoss"]:
     #     for maxDailyPercentProfit in params["maxDailyPercentProfit"]:
     # for dojiRatio in params["dojiRatio"]:
-    for stopMethod in params["exitPositionMethod"]:
-        for sessionHour in params["sessionHour"]:
-            for nbrTimeMaxMoveTP in params["nbrTimeMaxMoveTP"]:
-                for calendar_events in params["calendar_events"]:
-                    for percentHitToMoveTP in params["percentHitToMoveTP"]:
-                        for tpToMoveInTicks in params["tpToMoveInTicks"]:
-                            for slInTicksBeforeSession in params["slInTicksBeforeSession"]:
-                                for tpInTicksBeforeSession in params["tpInTicksBeforeSession"]:
-                                    for slInTicksDuringSession in params["slInTicksDuringSession"]:
-                                        for tpInTicksDuringSession in params["tpInTicksDuringSession"]:
-                                            for bracketsModifier in params["bracketsModifier"]:
-                                                for onlyUSSession in params["onlyUSSession"]:
-                                                    for timeframes in params["timeFrameUsed"]:
-                                                        comb = (onlyUSSession, timeframes, bracketsModifier, \
-                                                                [slInTicksBeforeSession, slInTicksDuringSession],[tpInTicksBeforeSession, tpInTicksDuringSession], \
-                                                                tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, stopMethod, calendar_events)
-                                                        params_combinations.append(comb)#, rsiVal)) #, chopVal, chopPeriod)) # windowForLevels, nbr_of_points, delta_in_ticks))
-                                                    #iteration+=1
+    # for maxTimeOutsideProfitZone in params["maxTimeOutsideProfitZone"]:
+    for ratioDistanceKijun in params["ratioDistanceKijun"]:
+        for slModifierAfterAlmostHit in params['slModifierAfterAlmostHit']:
+            for percentSlAlmostHit in params['percentSlAlmostHit']:
+                for nbrTimeMaxPassThroughTenkan in params["nbrTimeMaxPassThroughTenkan"]:
+                    for stopMethod in params["exitPositionMethod"]:
+                        for sessionHour in params["sessionHour"]:
+                            for nbrTimeMaxMoveTP in params["nbrTimeMaxMoveTP"]:
+                                for calendar_events in params["calendar_events"]:
+                                    for percentHitToMoveTP in params["percentHitToMoveTP"]:
+                                        for tpToMoveInTicks in params["tpToMoveInTicks"]:
+                                            for slInTicksBeforeSession in params["slInTicksBeforeSession"]:
+                                                for tpInTicksBeforeSession in params["tpInTicksBeforeSession"]:
+                                                    for slInTicksDuringSession in params["slInTicksDuringSession"]:
+                                                        for tpInTicksDuringSession in params["tpInTicksDuringSession"]:
+                                                            for bracketsModifier in params["bracketsModifier"]:
+                                                                for onlyUSSession in params["onlyUSSession"]:
+                                                                    for timeframes in params["timeFrameUsed"]:
+                                                                        comb = (onlyUSSession, timeframes, bracketsModifier, [slInTicksBeforeSession, slInTicksDuringSession], \
+                                                                                [tpInTicksBeforeSession, tpInTicksDuringSession], tpToMoveInTicks, percentHitToMoveTP, nbrTimeMaxMoveTP, \
+                                                                                sessionHour, stopMethod, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit, ratioDistanceKijun, calendar_events)
+                                                                        params_combinations.append(comb)#, rsiVal)) #, chopVal, chopPeriod)) # windowForLevels, nbr_of_points, delta_in_ticks))
+                                                        #iteration+=1
     
     print(f'number combinations to test: {len(params_combinations)}')  
     
@@ -147,7 +158,7 @@ def main():
         print("OS error:", err)
         return
 
-    with Pool(processes=12) as pool:
+    with Pool(processes=8) as pool:
         # Envoi de plusieurs tâches au pool de processus
         results = [pool.apply_async(run_strategy, args=(combination, positionSize, instrument, start_date, end_date)) for combination in params_combinations]
         # Attendre que toutes les tâches soient terminées
