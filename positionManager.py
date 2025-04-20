@@ -1,9 +1,10 @@
 from values_definition import Result
 
+
 class PositionManager():
 
     def __init__(self, tickValue, tickSize, positionSize, bracketsModifier, tpToMoveInTicks, 
-                percentHitToMoveTP, nbrTimeMaxMoveTP, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit): #maxTimeOutsideProfitZone,
+                percentHitToMoveTP, nbrTimeMaxMoveTP, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit, timeTPMovedToClose): #maxTimeOutsideProfitZone,
         
         self.tickValue = tickValue
         self.tickSize = tickSize
@@ -15,6 +16,8 @@ class PositionManager():
         self.nbrTimeMaxPassThroughTenkan = nbrTimeMaxPassThroughTenkan
         self.percentSlAlmostHit = percentSlAlmostHit
         self.slModifierAfterAlmostHit = slModifierAfterAlmostHit
+        self.timeTPMovedToClose = timeTPMovedToClose
+        self.entryDate = None
         self.nbrPassThroughTenkan = None
         self.stopLossAlmostHit = None
         self.nb_time_sl_moved = None
@@ -30,7 +33,8 @@ class PositionManager():
         # self.maxTimeOutsideProfitZone = maxTimeOutsideProfitZone
         # self.startTimeOutsideProfitZone = None
 
-    def set_new_trade_attributes(self, followingSlinTicks, tpInTicks, entryPrice, sl, tp):
+    def set_new_trade_attributes(self, entryDate, followingSlinTicks, tpInTicks, entryPrice, sl, tp):
+        self.entryDate = entryDate
         self.followingSlinTicks = followingSlinTicks
         self.tpInTicks = tpInTicks
         self.entryPrice = entryPrice
@@ -43,6 +47,7 @@ class PositionManager():
         self.nb_time_tp_moved = 0
     
     def reset(self):
+        self.entryDate = None
         self.followingSlinTicks = None
         self.tpInTicks = None
         self.entryPrice = None
@@ -177,7 +182,7 @@ class PositionManager():
                     # self.nb_time_sl_moved += 1
 
     def moveStopLossIfLevelHitDuringLongPosition(self, currentHigh):
-        if self.nb_time_tp_moved > 0:
+        if self.nb_time_tp_moved >= self.nbrTimeMaxMoveTP:
             for i, modifier in enumerate(self.bracketsModifier):
                 if modifier==[]: break
                 # condition = self.nb_time_sl_moved == i and (currentHigh-self.entryPrice)/self.tickSize>modifier[0]*self.tpInTicks
@@ -193,7 +198,7 @@ class PositionManager():
 
 
     def moveStopLossIfLevelHitDuringShortPosition(self, currentLow):
-        if self.nb_time_tp_moved > 0 :
+        if self.nb_time_tp_moved >= self.nbrTimeMaxMoveTP :
             for i, modifier in enumerate(self.bracketsModifier):
                 if modifier==[]: break
                 #condition = self.nb_time_sl_moved == i and (self.entryPrice-currentLow)/self.tickSize>modifier[0]*self.tpInTicks
@@ -219,18 +224,34 @@ class PositionManager():
         # elif self.entryPrice < currentClose and self.nbrPassThroughTenkan>0:
         #     self.nbrPassThroughTenkan=0
 
-    def moveTragetProfitIfLevelHitDuringLongPosition(self, currentHigh, currentClose): 
+    def moveTragetProfitIfLevelHitDuringLongPosition(self, currentHigh, currentClose, atr_ratio): 
         if (currentHigh-self.entryPrice)/self.tickSize>=self.percentHitToMoveTP*self.tpInTicks and currentClose > self.entryPrice \
         and self.nbrPassThroughTenkan < self.nbrTimeMaxPassThroughTenkan and self.nb_time_tp_moved < self.nbrTimeMaxMoveTP and not self.trade_is_done:
             self.nb_time_tp_moved+=1
-            self.tpInTicks = self.tpInTicks + self.tpToMoveInTicks
-            self.tp = self.tp + self.tpToMoveInTicks*self.tickSize   
+            self.tpInTicks = self.tpInTicks + self.tpToMoveInTicks*atr_ratio
+            self.tp = self.tp + self.tpToMoveInTicks*self.tickSize  
 
-    def moveTragetProfitIfLevelHitDuringShortPosition(self, currentLow, currentClose): 
+    def moveTragetProfitIfLevelHitDuringShortPosition(self, currentLow, currentClose, atr_ratio): 
         if (self.entryPrice-currentLow)/self.tickSize>=self.percentHitToMoveTP*self.tpInTicks and currentClose > self.entryPrice \
         and self.nbrPassThroughTenkan < self.nbrTimeMaxPassThroughTenkan and self.nb_time_tp_moved < self.nbrTimeMaxMoveTP and not self.trade_is_done:
             self.nb_time_tp_moved+=1
-            self.tpInTicks = self.tpInTicks + self.tpToMoveInTicks
-            self.tp = self.tp - self.tpToMoveInTicks*self.tickSize   
+            self.tpInTicks = self.tpInTicks + self.tpToMoveInTicks*atr_ratio
+            self.tp = self.tp - self.tpToMoveInTicks*self.tickSize
 
-  
+    def checkIfCanExitLongPosition(self, openPrice, closePrice, current_kijun):
+
+        cond1 = closePrice - self.entryPrice > 0
+        cond2 = self.nb_time_tp_moved>self.timeTPMovedToClose
+        cond3 = openPrice > closePrice
+        cond4 = closePrice < current_kijun
+       
+        return cond1 and cond2 and cond3 and cond4
+    
+    def checkIfCanExitShortPosition(self, openPrice, closePrice, current_kijun):
+
+        cond1 = self.entryPrice - closePrice > 0
+        cond2 = self.nb_time_tp_moved>self.timeTPMovedToClose
+        cond3 = openPrice < closePrice
+        cond4 = closePrice > current_kijun
+       
+        return cond1 and cond2 and cond3 and cond4

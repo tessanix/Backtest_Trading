@@ -4,133 +4,158 @@ from values_definition import Position
 from strategies.Strategy import Strategy
 from positionManager import PositionManager
 
-def strategyLoop(strategy: Strategy, us_calendar_df:pd.DataFrame|None, instrument:str, usSession:bool, feesPerTrade:float, positionSize:int=1,
-                forbiddenHours:list=[], tpInTicksInitial:list=[25,70], slInTicksInitial:int=[15,40], bracketsModifier:list[list]=[[0.5, 0.15]], 
-                tpToMoveInTicks:float=5, percentHitToMoveTP:float=0.9, nbrTimeMaxMoveTP:int=2, usSessionHour:int=16, stopMethod:int=2, 
-                maxTimeOutsideProfitZone:int=30, nbrTimeMaxPassThroughTenkan:int=2, percentSlAlmostHit:float=0.75, slModifierAfterAlmostHit:float=0.1): #, methodForMovingTP:int=1): # atrRatioForTp:float=0, atrRatioForSl:float=0, atrSlopeTreshold:float=0.5,
+class Backtest():
     
-    INITIAL_CAPITAL = 50_000.0 # constant
-
-    if instrument == "MES":
-        tickValue, tickSize = 1.25, 0.25
-    elif instrument == "ES":
-        tickValue, tickSize = 12.5, 0.25
-    elif instrument == "MNQ":
-        tickValue, tickSize = 0.5, 0.25
-    elif instrument == "NQ":
-        tickValue, tickSize = 5.0, 0.25
-    elif instrument == "MCL":
-        tickValue, tickSize = 1.0, 0.01
-    elif instrument == "CL":
-        tickValue, tickSize = 10.0, 0.01
-    else: 
-        return None
-
-    position = Position.NONE
-    tradesData = []
-    allowed_trading_hours_start = 7 if usSession == False else usSessionHour
-    allowed_trading_hours_end = 20
-    posManager = PositionManager(tickValue, tickSize, positionSize, bracketsModifier, tpToMoveInTicks, 
-                                 percentHitToMoveTP, nbrTimeMaxMoveTP, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit) #maxTimeOutsideProfitZone,
-    for i in strategy.df.index[1:]: 
+    def __init__(self, strategy: Strategy, us_calendar_df:pd.DataFrame|None, instrument:str, usSession:bool, feesPerTrade:float, positionSize:int=1,
+                    forbiddenHours:list=[], tpInTicksInitial:list=[25,70], slInTicksInitial:int=[15,40], bracketsModifier:list[list]=[[0.5, 0.15]], 
+                    tpToMoveInTicks:float=5, percentHitToMoveTP:float=0.9, nbrTimeMaxMoveTP:int=2, usSessionHour:int=16, stopMethod:int=2, 
+                    maxTimeOutsideProfitZone:int=30, nbrTimeMaxPassThroughTenkan:int=2, percentSlAlmostHit:float=0.75, slModifierAfterAlmostHit:float=0.1, timeTPMovedToClose:int=1): #, methodForMovingTP:int=1): # atrRatioForTp:float=0, atrRatioForSl:float=0, atrSlopeTreshold:float=0.5,
         
-        currentClose = strategy.df.loc[i, "close"]
-        currentHigh = strategy.df.loc[i, "high"]
-        currentLow = strategy.df.loc[i, "low"]
-        currentDate = strategy.df.loc[i]["datetime"]
+        self.INITIAL_CAPITAL = 50_000.0 # constant
+
+        if instrument == "MES":
+            self.tickValue, self.tickSize = 1.25, 0.25
+        elif instrument == "ES":
+            self.tickValue, self.tickSize = 12.5, 0.25
+        elif instrument == "MNQ":
+            self.tickValue, self.tickSize = 0.5, 0.25
+        elif instrument == "NQ":
+            self.tickValue, self.tickSize = 5.0, 0.25
+        elif instrument == "MCL":
+            self.tickValue, self.tickSize = 1.0, 0.01
+        elif instrument == "CL":
+            self.tickValue, self.tickSize = 10.0, 0.01
+        else: 
+            return None
         
-        high_before_low = strategy.df.loc[i, "high_before_low"] #if 'high_before_low' in strategy.df.columns else False
+        self.strategy = strategy
+        self.feesPerTrade = feesPerTrade
+        self.us_calendar_df = us_calendar_df
+        self.forbiddenHours = forbiddenHours
+        self.slInTicksInitial = slInTicksInitial
+        self.tpInTicksInitial = tpInTicksInitial
 
-        if position == Position.NONE:
-
-            if us_calendar_df is not None:
-                us_calendar_df = us_calendar_df[us_calendar_df["datetime"]>=currentDate]
-                if len(us_calendar_df) > 0:
-                    condition = (currentDate < us_calendar_df.iloc[0]["datetime"] - timedelta(minutes=20) or us_calendar_df.iloc[0]["datetime"] + timedelta(minutes=10) < currentDate)
-                else:
-                    condition = True
+        self.allowed_trading_hours_start = 7 if usSession == False else usSessionHour
+        self.allowed_trading_hours_end = 21
+        self.posManager = PositionManager(self.tickValue, self.tickSize, positionSize, bracketsModifier, tpToMoveInTicks, 
+                            percentHitToMoveTP, nbrTimeMaxMoveTP, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit, timeTPMovedToClose) #maxTimeOutsideProfitZone,
+    
+    def checkCanEnterPos(self, i, currentDate, currentClose, atr_ratio):
+        if self.us_calendar_df is not None:
+            self.us_calendar_df = self.us_calendar_df[self.us_calendar_df["datetime"]>=currentDate]
+            if len(self.us_calendar_df) > 0:
+                condition = (currentDate < self.us_calendar_df.iloc[0]["datetime"] - timedelta(minutes=20) or self.us_calendar_df.iloc[0]["datetime"] + timedelta(minutes=10) < currentDate)
             else:
                 condition = True
-
-            if (allowed_trading_hours_start <= currentDate.hour and currentDate.hour < allowed_trading_hours_end 
-                and currentDate.hour not in forbiddenHours and condition):
-
-                followingSlinTicks = slInTicksInitial[0] if currentDate.hour < usSessionHour else slInTicksInitial[1]
-                tpInTicks          = tpInTicksInitial[0] if currentDate.hour < usSessionHour else tpInTicksInitial[1] 
-               
-                position   = strategy.checkIfCanEnterPosition(i, tpInTicks, tickSize)
-                entryDate  = currentDate
-                entryPrice = currentClose
-
-                if position == Position.LONG:
-                    tp = entryPrice + tpInTicks*tickSize 
-                    sl = entryPrice - followingSlinTicks*tickSize 
-                    posManager.set_new_trade_attributes(followingSlinTicks, tpInTicks, entryPrice, sl, tp)
-                    
-                elif position == Position.SHORT:
-                    tp =  entryPrice - tpInTicks*tickSize
-                    sl = entryPrice + followingSlinTicks*tickSize
-                    posManager.set_new_trade_attributes(followingSlinTicks, tpInTicks, entryPrice, sl, tp)
-
         else:
-            currentOpen = strategy.df.loc[i, "open"]
-            currentTenkan = strategy.df.loc[i, "tenkan"]
-            # prevClose = strategy.df.loc[i-1, "close"]
-            ################################################### LONG ###################################################
+            condition = True
+
+        if (self.allowed_trading_hours_start <= currentDate.hour and currentDate.hour < self.allowed_trading_hours_end 
+            and currentDate.hour not in self.forbiddenHours and condition):
+
+            # isUsSession = currentDate.hour >= usSessionHour
+            # followingSlinTicks = slInTicksInitial[1] if isUsSession else slInTicksInitial[0]
+            # tpInTicks          = tpInTicksInitial[1] if isUsSession else tpInTicksInitial[0] 
+
+            followingSlinTicks = self.slInTicksInitial[0]*atr_ratio 
+            tpInTicks          = self.tpInTicksInitial[0]*atr_ratio 
+        
+            position   = self.strategy.checkIfCanEnterPosition(i, tpInTicks, self.tickSize)
+            entryDate  = currentDate
+            entryPrice = currentClose
+
             if position == Position.LONG:
-
-                if high_before_low:
-                    posManager.moveStopLossIfLevelHitDuringLongPosition(currentHigh=currentHigh)
-                    posManager.checkTargetProfitHitDuringLongPosition(currentHigh=currentHigh)
-                    posManager.checkStopLossHitDuringLongPosition(currentLow=currentLow)
-                else:
-                    posManager.checkStopLossHitDuringLongPosition(currentLow=currentLow)
-                    posManager.moveStopLossIfLevelHitDuringLongPosition(currentHigh=currentHigh)
-                    posManager.checkTargetProfitHitDuringLongPosition(currentHigh=currentHigh)
-
-                posManager.moveStopLossIfAlmostHitDuringLongPosition(currentClose)
-                posManager.checkTenkanPassThroughDuingLongPosition(currentClose, currentOpen, currentTenkan)
-                posManager.moveTragetProfitIfLevelHitDuringLongPosition(currentHigh=currentHigh, currentClose=currentClose) #, currentOpen=currentOpen, currentTenkan=currentTenkan)
-
-                if not posManager.trade_is_done and ( 
-                #strategy.checkIfCanStopLongPosition(i, entryPrice=entryPrice, closePrice=currentClose, method=stopMethod)
-                # posManager.checkToMuchTimeInNoProfitZoneDuringLong(currentClose, prevClose, currentDate)
-                currentDate.hour >= 22):
-                    posManager.long_stop_condition_hit(currentClose)            
-
-            ################################################### SHORT ###################################################
+                tp = entryPrice + tpInTicks*self.tickSize 
+                sl = entryPrice - followingSlinTicks*self.tickSize 
+                self.posManager.set_new_trade_attributes(entryDate, followingSlinTicks, tpInTicks, entryPrice, sl, tp)
+                
             elif position == Position.SHORT:
+                tp =  entryPrice - tpInTicks*self.tickSize
+                sl = entryPrice + followingSlinTicks*self.tickSize
+                self.posManager.set_new_trade_attributes(entryDate, followingSlinTicks, tpInTicks, entryPrice, sl, tp)
 
-                if high_before_low:
-                    posManager.checkStopLossHitDuringShortPosition(currentHigh=currentHigh)
-                    posManager.moveStopLossIfLevelHitDuringShortPosition(currentLow=currentLow)
-                    posManager.checkTargetProfitHitDuringShortPosition(currentLow=currentLow)
-                else:
-                    posManager.moveStopLossIfLevelHitDuringShortPosition(currentLow=currentLow)
-                    posManager.checkTargetProfitHitDuringShortPosition(currentLow=currentLow)
-                    posManager.checkStopLossHitDuringShortPosition(currentHigh=currentHigh)
-                    
-                posManager.moveStopLossIfAlmostHitDuringShortPosition(currentClose)
-                posManager.checkTenkanPassThroughDuingShortPosition(currentClose, currentOpen, currentTenkan)
-                posManager.moveTragetProfitIfLevelHitDuringShortPosition(currentLow=currentLow, currentClose=currentClose) #, currentOpen=currentOpen, currentTenkan=currentTenkan)
+            return position
+        else:
+            return Position.NONE
+            
 
-                if not posManager.trade_is_done and ( 
-                #strategy.checkIfCanStopShortPosition(i, entryPrice=entryPrice, closePrice=currentClose, method=stopMethod)
-                # posManager.checkToMuchTimeInNoProfitZoneDuringShort(currentClose, prevClose, currentDate)
-                currentDate.hour >= 22):
-                    posManager.short_stop_condition_hit(currentClose)
+    def strategyLoop(self):
+        position = Position.NONE
+        tradesData = []
+        for i in self.strategy.df.index[1+25:]: 
+            
+            currentClose = self.strategy.df.loc[i, "close"]
+            currentHigh = self.strategy.df.loc[i, "high"]
+            currentLow = self.strategy.df.loc[i, "low"]
+            currentDate = self.strategy.df.loc[i]["datetime"]
+            atr_ratio = self.strategy.df.loc[i, "ATR"]/self.tickSize
+            high_before_low = self.strategy.df.loc[i, "high_before_low"] #if 'high_before_low' in strategy.df.columns else False
 
-            if posManager.trade_is_done:
-                tradesData.append({
-                    "entry_date": entryDate, 
-                    "exit_date": currentDate, 
-                    "entry_price": posManager.entryPrice, 
-                    "exit_price": posManager.exit_price,
-                    "position" : position,
-                    "profit_including_fees_from_start(%)": 100*(posManager.profit-feesPerTrade)/INITIAL_CAPITAL,
-                    "profit_from_start(%)":100*posManager.profit/INITIAL_CAPITAL,
-                }) 
-                posManager.reset()
-                position = Position.NONE   
+            if position == Position.NONE:
+                position = self.checkCanEnterPos(i, currentDate, currentClose, atr_ratio)
+           
+            else:
+                currentOpen = self.strategy.df.loc[i, "open"]
+                currentTenkan = self.strategy.df.loc[i, "tenkan"]
+                # prevClose = strategy.df.loc[i-1, "close"]
+                ################################################### LONG ###################################################
+                if position == Position.LONG:
 
-    return pd.DataFrame(tradesData)
+                    if high_before_low:
+                        self.posManager.moveStopLossIfLevelHitDuringLongPosition(currentHigh=currentHigh)
+                        self.posManager.checkTargetProfitHitDuringLongPosition(currentHigh=currentHigh)
+                        self.posManager.checkStopLossHitDuringLongPosition(currentLow=currentLow)
+                    else:
+                        self.posManager.checkStopLossHitDuringLongPosition(currentLow=currentLow)
+                        self.posManager.moveStopLossIfLevelHitDuringLongPosition(currentHigh=currentHigh)
+                        self.posManager.checkTargetProfitHitDuringLongPosition(currentHigh=currentHigh)
+
+                    self.posManager.moveStopLossIfAlmostHitDuringLongPosition(currentClose)
+                    self.posManager.checkTenkanPassThroughDuingLongPosition(currentClose, currentOpen, currentTenkan)
+                    self.posManager.moveTragetProfitIfLevelHitDuringLongPosition(currentHigh=currentHigh, currentClose=currentClose, atr_ratio=atr_ratio) #, currentOpen=currentOpen, currentTenkan=currentTenkan)
+
+                    if not self.posManager.trade_is_done and ( 
+                    # self.posManager.checkIfCanExitLongPosition(currentOpen, currentClose, current_kijun=strategy.df.loc[i, "kijun"])
+                    #strategy.checkIfCanStopLongPosition(i, entryPrice=entryPrice, closePrice=currentClose, method=stopMethod)
+                    # self.posManager.checkToMuchTimeInNoProfitZoneDuringLong(currentClose, prevClose, currentDate)
+                    currentDate.hour >= 22):
+                        self.posManager.long_stop_condition_hit(currentClose)            
+
+                ################################################### SHORT ###################################################
+                elif position == Position.SHORT:
+
+                    if high_before_low:
+                        self.posManager.checkStopLossHitDuringShortPosition(currentHigh=currentHigh)
+                        self.posManager.moveStopLossIfLevelHitDuringShortPosition(currentLow=currentLow)
+                        self.posManager.checkTargetProfitHitDuringShortPosition(currentLow=currentLow)
+                    else:
+                        self.posManager.moveStopLossIfLevelHitDuringShortPosition(currentLow=currentLow)
+                        self.posManager.checkTargetProfitHitDuringShortPosition(currentLow=currentLow)
+                        self.posManager.checkStopLossHitDuringShortPosition(currentHigh=currentHigh)
+                        
+                    self.posManager.moveStopLossIfAlmostHitDuringShortPosition(currentClose)
+                    self.posManager.checkTenkanPassThroughDuingShortPosition(currentClose, currentOpen, currentTenkan)
+                    self.posManager.moveTragetProfitIfLevelHitDuringShortPosition(currentLow=currentLow, currentClose=currentClose, atr_ratio=atr_ratio) #, currentOpen=currentOpen, currentTenkan=currentTenkan)
+
+                    if not self.posManager.trade_is_done and ( 
+                    # self.posManager.checkIfCanExitShortPosition(currentOpen, currentClose, current_kijun=strategy.df.loc[i, "kijun"])
+                    #strategy.checkIfCanStopShortPosition(i, entryPrice=entryPrice, closePrice=currentClose, method=stopMethod)
+                    # self.posManager.checkToMuchTimeInNoProfitZoneDuringShort(currentClose, prevClose, currentDate)
+                    currentDate.hour >= 22):
+                        self.posManager.short_stop_condition_hit(currentClose)
+
+                if self.posManager.trade_is_done:
+                    tradesData.append({
+                        "entry_date": self.posManager.entryDate, 
+                        "exit_date": currentDate, 
+                        "entry_price": self.posManager.entryPrice, 
+                        "exit_price": self.posManager.exit_price,
+                        "position" : position,
+                        "profit_including_fees_from_start(%)": 100*(self.posManager.profit-self.feesPerTrade)/self.INITIAL_CAPITAL,
+                        "profit_from_start(%)":100*self.posManager.profit/self.INITIAL_CAPITAL,
+                    }) 
+                    self.posManager.reset()
+                    position = Position.NONE   
+                    position = self.checkCanEnterPos(i, currentDate, currentClose, atr_ratio)
+                            
+        return pd.DataFrame(tradesData)

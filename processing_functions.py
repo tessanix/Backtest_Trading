@@ -38,6 +38,7 @@ def compute_Ichimoku_on_DataFrame(df: pd.DataFrame):
     # Shift the "ssa" and "ssb" values to align them properly
     df['ssa'] = df['ssa'].shift(26)
     df['ssb'] = df['ssb'].shift(26)
+    df['chikou'] = df['close'].shift(-26)
     
     return df
 
@@ -106,10 +107,10 @@ def create_us_calendar_df(start_date="2023-03-24 12:00:00", end_date="2025-02-14
     return df
 
 def create_df(timeFramesUsedInMinutes=["1"], instrument="ES", 
-              start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00", putVolumeInData=False ): #, atrSlopePeriod=5 ):#, rsiPeriod=14): #, chopPeriod:int=14): #, windowForLevels=12):
+              start_date="2023-03-24 12:00:00", end_date="2025-02-14 12:00:00", putVolumeInData=False, ATRperiod=14 ): 
     root_path = "market_data/"
 
-    start_date = pd.to_datetime(start_date) #data are weird before this data (a problem from data provider???)
+    start_date = pd.to_datetime(start_date) #data are weird before this date (a problem from data provider???)
     end_date = pd.to_datetime(end_date)
     main_df = pd.DataFrame()
     usecols = ["datetime", "open", "high", "low", "close", "high_before_low", "volume"] if putVolumeInData else ["datetime", "open", "high", "low", "high_before_low", "close"]
@@ -124,10 +125,7 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="ES",
             main_df = pd.read_csv(
                 filepath_or_buffer=path,
                 usecols=usecols,
-                #names=["datetime", "open", "high", "low","close", "volume", "high_before_low"],
-                #header=None,
                 delimiter=";",
-                #dtype={'high_before_low': 'boolean'}
             )
             main_df['datetime'] = pd.to_datetime(main_df['datetime'], format='%Y-%m-%d %H:%M:%S') #format='%d/%m/%Y %H:%M:%S')
             if start_date < main_df.iloc[0]['datetime'] or main_df.iloc[-1]['datetime'] < end_date:
@@ -153,58 +151,41 @@ def create_df(timeFramesUsedInMinutes=["1"], instrument="ES",
             next_timeframe_df = compute_Ichimoku_on_DataFrame(next_timeframe_df)
             ### ADD SSA AND SSB DATA FROM SUPERIOR TIMEFRAME ###
             suffixe = "_"+timeFrame
-            main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'ssb', 'kijun']], on='datetime', how='left', suffixes = ["", suffixe])
-            main_df[["ssb"+suffixe, 'kijun'+suffixe]] = main_df[[ "ssb"+suffixe, 'kijun'+suffixe]].ffill()
-            # main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'ssa', 'ssb', 'kijun']], on='datetime', how='left', suffixes = ["", suffixe])
-            # main_df[["ssa"+suffixe, "ssb"+suffixe, 'kijun'+suffixe]] = main_df[["ssa"+suffixe, "ssb"+suffixe, 'kijun'+suffixe]].ffill()
-            # if idx == 1 :
-            #     main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'open', 'close']], on='datetime', how='left', suffixes = ["", suffixe])
-                # main_df[["close"+suffixe, "open"+suffixe]] = main_df[["close"+suffixe, "open"+suffixe]].ffill()
+            main_df = pd.merge(main_df, next_timeframe_df[['datetime', 'ssb', 'ssa', 'kijun']], on='datetime', how='left', suffixes = ["", suffixe])
+            main_df[["ssb"+suffixe, 'ssa'+suffixe, 'kijun'+suffixe]] = main_df[[ "ssb"+suffixe,'ssa'+suffixe, 'kijun'+suffixe]].ffill()
 
 
-
-
-    # 1. Convertir la colonne datetime en index pour faciliter la resampling des données journalières
     main_df.set_index('datetime', inplace=True)
 
-    # 2. Calculer les prix journaliers : High, Low et Close (resampling daily)
     df_daily = main_df.resample('D').agg({'high': 'max', 'low': 'min', 'close': 'last'})
 
-    # 3. Calculer les niveaux de point pivot (PP, R3, R2, R1, S1, S2, S3)
-    df_daily['PP'] = (df_daily['high'] + df_daily['low'] + df_daily['close']) / 3
-    df_daily['R1'] = (2 * df_daily['PP']) - df_daily['low']
-    df_daily['R2'] = df_daily['PP'] + (df_daily['high'] - df_daily['low'])
-    df_daily['R3'] = df_daily['high'] + 2 * (df_daily['PP'] - df_daily['low'])
-    df_daily['S1'] = (2 * df_daily['PP']) - df_daily['high']
-    df_daily['S2'] = df_daily['PP'] - (df_daily['high'] - df_daily['low'])
-    df_daily['S3'] = df_daily['low'] - 2 * (df_daily['high'] - df_daily['PP'])
+   # Décalage d’un jour pour utiliser les données de la veille
+    df_daily['high_prev'] = df_daily['high'].shift(1)
+    df_daily['low_prev'] = df_daily['low'].shift(1)
+    df_daily['close_prev'] = df_daily['close'].shift(1)
 
-    # 4. Fusionner ces points pivots journaliers dans le dataframe 5min
-    # On va faire un merge sur l'index (qui est 'datetime' après resampling)
-    main_df = main_df.merge(df_daily[['PP', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3']], left_index=True, right_index=True, how='left')
-    del df_daily
+    # Calcul des pivots classiques avec les données de la veille
+    df_daily['PP'] = (df_daily['high_prev'] + df_daily['low_prev'] + df_daily['close_prev']) / 3
+    df_daily['R1'] = (2 * df_daily['PP']) - df_daily['low_prev']
+    df_daily['R2'] = df_daily['PP'] + (df_daily['high_prev'] - df_daily['low_prev'])
+    df_daily['R3'] = df_daily['PP'] + 2 * (df_daily['high_prev'] - df_daily['low_prev'])
+    df_daily['S1'] = (2 * df_daily['PP']) - df_daily['high_prev']
+    df_daily['S2'] = df_daily['PP'] - (df_daily['high_prev'] - df_daily['low_prev'])
+    df_daily['S3'] = df_daily['PP'] - 2 * (df_daily['high_prev'] - df_daily['low_prev'])
 
-    # 5. Optionnel : remplir les valeurs manquantes si nécessaire (avec ffill ou bfill)
-    main_df[['PP', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3']] = main_df[['PP', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3']].ffill()
+    pivots_levels = ['PP', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3']
+    df_daily = df_daily[pivots_levels]
+    main_df = main_df.merge(df_daily, left_index=True, right_index=True, how='left')
 
-    # Affichage du DataFrame mis à jour
-    main_df.dropna(inplace=True)
-    main_df.reset_index(inplace=True)
-
-    # main_df["ATR"] = calculate_atr(main_df, period=14)
-    # main_df["atr_slope_in_percent"] = (main_df["ATR"].shift(-atrSlopePeriod) - main_df["ATR"]) / main_df["ATR"]
-
-    # main_df.dropna(inplace=True)
-    # main_df.reset_index(inplace=True)
-
-    # main_df['support']    = np.where(main_df.low == main_df.low.rolling(windowForLevels, center=True).min(), main_df.low, 0) #C'est tricher car on utilise center=True mais on l'utilise quand meme pour un gain de temps de backtest
-    # main_df['resistance'] = np.where(main_df.high == main_df.high.rolling(windowForLevels, center=True).max(), main_df.high, 0)
+    main_df[pivots_levels] = main_df[pivots_levels].ffill()
     
-    # ### ADD SUPPORT AND RESISTANCE DATA FROM M15 ###
-    # main_df = pd.merge(main_df, df_M15[['datetime', 'support', 'resistance']], on='datetime', how='left', suffixes = ["", "_m15"])
-    # main_df["chop"] = choppiness_index(main_df, period=chopPeriod)
-    # main_df.dropna(inplace=True)
-    # main_df.reset_index(inplace=True)
+    # Compute ATR:
+    main_df["ATR"] = calculate_atr(main_df, ATRperiod)
+
+    #remove Nan values
+    cols_to_check = [col for col in main_df.columns if col != 'chikou']
+    main_df.dropna(subset=cols_to_check, inplace=True)
+    main_df.reset_index(inplace=True)
 
     return main_df
 
@@ -229,7 +210,7 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
     for id, trade_data in trades_database.items():
         #df, sl, tp, onlyUSSession, smke, timeframes, tc, tenkanCond, slModifiers, fbh, atrRatio = trade_data #,  nbr_of_points, delta_in_ticks, windowForLevels = trade_data
         df, onlyUSSession, timeframes, bracketsModifier, slInTicks, tpInTicks, tpToMoveInTicks, \
-        percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, stopMethod, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit, ratioDistanceKijun, calendar_events = trade_data
+        percentHitToMoveTP, nbrTimeMaxMoveTP, sessionHour, stopMethod, nbrTimeMaxPassThroughTenkan, percentSlAlmostHit, slModifierAfterAlmostHit, ratioDistanceKijun, timeTPMovedToClose, calendar_events = trade_data
         if not df.empty:
             df = df[(start_date <= df["entry_date"] ) & (df["entry_date"] <= end_date)]
 
@@ -274,13 +255,14 @@ def create_winrate_dictionnary(trades_database, sort_option=2, tickSize = 0.25,
                 # 'TP [Ticks]': (tp[0], tp[1]),
                 "Q2 duration (médiane)": quantiles_duration.loc[0.50], 
                 "Q3 duration (75%)": quantiles_duration.loc[0.75],
-                'timeframes': timeframes,
+                # 'timeframes': timeframes,
                 'bracketsModifier':bracketsModifier,
                 "percentHitToMoveTP":percentHitToMoveTP,
+                "timeTPMovedToClose":timeTPMovedToClose,
                 "slModifierAfterAlmostHit":slModifierAfterAlmostHit,
                 "percentSlAlmostHit":percentSlAlmostHit,
-                "PassThrTenkan":nbrTimeMaxPassThroughTenkan,
-                "ratioDistanceKijun":ratioDistanceKijun,
+                # "PassThrTenkan":nbrTimeMaxPassThroughTenkan,
+                # "ratioDistanceKijun":ratioDistanceKijun,
                 "tpToMoveInTicks":tpToMoveInTicks,
                 "nbrTimeMaxMoveTP":nbrTimeMaxMoveTP,
                 "maxLossStreak, avgLossStreak": get_loss_streak_data(df),

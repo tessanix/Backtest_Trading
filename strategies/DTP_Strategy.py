@@ -5,13 +5,17 @@ from values_definition import Position, Trend
 
 class DTP(Strategy):
 
-    def __init__(self, df:pd.DataFrame, timeframes:list[str], useAllEntryPoints:bool, ticksCrossed:int=0, tenkanCond:bool=2, ratioDistanceKijun:float=0.4):
+    def __init__(self, df:pd.DataFrame, timeframes:list[str], useAllEntryPoints:bool, ticksCrossed:int=0, tenkanCond:bool=2, ratioDistanceKijun:float=0.4):#, updateCloseFrequency:int=1 ):
         self.ratioDistanceKijun = ratioDistanceKijun
         self.tenkanCond=tenkanCond
         self.ticksCrossed = ticksCrossed
         self.df = df
         self.timeframes = timeframes
         self.useAllEntryPoints = useAllEntryPoints
+
+        # self.open, self.high, self.low, self.close = None, None, None, None
+        # self.updateCloseFrequency = updateCloseFrequency
+        # self.date = None
  
     def price_crossed_above(self, prev_close_price, close_price, value, byHowFar=0) -> bool:
         if(prev_close_price <= value and value+byHowFar < close_price ):
@@ -99,29 +103,65 @@ class DTP(Strategy):
     #     else: 
     #         return Position.NONE
 
+    def check_chikou_position(self, i, position):
+        chikou_val = self.df.loc[i-26, "chikou"]
+        ssa_val = self.df.loc[i-26,"ssa"]
+        ssb_val = self.df.loc[i-26,"ssb"]
+        # close_val = self.df.loc[i-26,"close"]
+
+        if (ssa_val <= chikou_val and chikou_val <= ssb_val) or (ssa_val >= chikou_val and chikou_val >= ssb_val):
+        # or (position == Position.LONG and chikou_val <= close_val) \
+        # or (position == Position.SHORT and chikou_val >= close_val):
+            position = Position.NONE
+
+        return position
     
+    # def update_internal_pivot(self, i, close, today):
+    #     current_highest = self.df.loc[i, "high"]
+    #     current_lowest = self.df.loc[i, "low"]
+    #     if self.updateCloseFrequency == 1:
+    #         self.close = close
+            
+    #     elif self.updateCloseFrequency == 2:
+    #         if self.date.hour != today.hour:
+    #             self.close = close
+
+    #     elif self.updateCloseFrequency == 2:
+    #         if self.date.day != today.day:
+    #             self.close = close
+
+    #     if self.high < current_highest:
+    #         self.high = current_highest
+    #     if self.low > current_lowest:
+    #         self.low = current_lowest
+
     def get_2_nearest_pivot_levels(self, i, close) -> tuple[float, float]:
+        # self.update_internal_pivot()
         pivot_levels = self.df.loc[i][["S3","S2","S1","PP","R1","R2","R3"]]
-        closest_lower = None
-        closest_higher = None
-        # Parcourir les valeurs triées pour trouver les plus proches
-        for value in pivot_levels:
-            if value < close:
-                closest_lower = value
-            elif value > close and closest_higher is None:
-                closest_higher = value
-        
+
+        lowers = [lvl for lvl in pivot_levels if lvl <= close]
+        highers = [lvl for lvl in pivot_levels if lvl >= close]
+
+        # Trouver le plus proche dans chaque direction
+        closest_lower = max(lowers) if lowers else None
+        closest_higher = min(highers) if highers else None
+        # if closest_lower is None or closest_higher is None:
+        #     print(f"⚠️ Pivot missing at index {i} | close = {close} | pivots = {pivot_levels}")
+
         return closest_lower, closest_higher
+            
 
 
-    def get_largest_ssb_flat(self, i, lookback=720):
-        if i-lookback < 0:
-            return 0
-        ssb_levels_count = self.df.loc[i-lookback: i, "ssb_"+self.timeframes[1]].value_counts()
-        return ssb_levels_count.idxmax()
+    # def get_largest_ssb_flat(self, i, lookback=720):
+    #     if i-lookback < 0:
+    #         return 0
+    #     ssb_levels_count = self.df.loc[i-lookback: i, "ssb_"+self.timeframes[1]].value_counts()
+    #     return ssb_levels_count.idxmax()
 
     def verify_distance_from_pivot_level(self, i, position, close, tpInTicks, minTick):#, ssb_higher_timeframe) -> Position:
         support, resistance = self.get_2_nearest_pivot_levels(i, close)
+        if support is None or resistance is None:
+            return Position.NONE
         # ssb_higher_timeframe = self.get_largest_ssb_flat(i, lookback=720)
         # if ssb_higher_timeframe > 0:
         # if ssb_higher_timeframe > support and ssb_higher_timeframe < close:
@@ -132,7 +172,7 @@ class DTP(Strategy):
         # pivot_level = self.df.loc[i]["PP"]
         distance_kijun = abs(close-self.df.loc[i,"kijun_15"])
         distance_sup_res = resistance-support
-        if distance_kijun < self.ratioDistanceKijun*distance_sup_res:
+        if distance_kijun < self.ratioDistanceKijun*distance_sup_res or self.ratioDistanceKijun < 0:
             if position == Position.LONG:
                 # if close < pivot_level:
                 #     return Position.NONE
@@ -193,9 +233,9 @@ class DTP(Strategy):
         for tf in self.timeframes[1:]:
             # current_ssa_of_other_tf = self.df.loc[i]["ssa_"+tf]
             current_ssb_of_other_tf = self.df.loc[i]["ssb_"+tf]
-            if close > current_ssb_of_other_tf: #and close > current_ssa_of_other_tf:
+            if close > current_ssb_of_other_tf :#and close > current_ssa_of_other_tf:
                 convergence_UTs.append(Trend.BULLISH)
-            if close < current_ssb_of_other_tf: # and close < current_ssa_of_other_tf:
+            if close < current_ssb_of_other_tf : #and close < current_ssa_of_other_tf:
                 convergence_UTs.append(Trend.BEARISH)
 
 
@@ -262,6 +302,7 @@ class DTP(Strategy):
             #     ):
             #         position = Position.SHORT
         position = self.verify_distance_from_pivot_level(i, position, close, tpInTicks, minTick) #, current_ssb_of_other_tf)
+        position = self.check_chikou_position(i, position)
 
         # if self.checkChopIndexAllowingTrade(i) == False:
         #     position = Position.NONE
